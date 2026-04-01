@@ -90,19 +90,36 @@ class StatsRepositoryAdapter:
             return None
 
     def get_book_outline(self, slug: str) -> Optional[Dict]:
-        """Read a novel's outline data.
+        """Expose chapter list in the shape expected by StatsService.
 
-        Note: In the new architecture, outline data might be stored differently.
-        For now, return None as outlines are not yet implemented.
+        New architecture stores chapters inside ``novels/{slug}.json``; there is no
+        separate outline.json. We map ``chapters[].number`` to outline ``id`` so
+        :meth:`get_chapter_content` and stats aggregation stay aligned.
 
         Args:
             slug: The novel's ID (used as slug)
 
         Returns:
-            Dictionary containing outline data, or None
+            ``{"chapters": [{"id": int, "title": str}, ...]}`` or None
         """
-        logger.debug(f"Outline requested for {slug} - not yet implemented in new architecture")
-        return None
+        manifest = self.get_book_manifest(slug)
+        if not manifest:
+            return None
+        raw = manifest.get("chapters") or []
+        outline_chapters = []
+        for ch in raw:
+            num = ch.get("number")
+            if num is None:
+                continue
+            try:
+                chapter_num = int(num)
+            except (TypeError, ValueError):
+                continue
+            outline_chapters.append({
+                "id": chapter_num,
+                "title": (ch.get("title") or "").strip(),
+            })
+        return {"chapters": outline_chapters}
 
     def get_chapter_content(self, slug: str, chapter_id: int) -> Optional[str]:
         """Read a chapter's content from the novel data.

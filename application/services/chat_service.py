@@ -27,7 +27,7 @@ class ChatService:
     def __init__(
         self,
         chat_repository: ChatRepository,
-        llm_service: LLMService,
+        llm_service: Optional[LLMService],
         novel_repository: NovelRepository,
         bible_repository: BibleRepository,
         cast_repository: CastRepository,
@@ -37,7 +37,7 @@ class ChatService:
 
         Args:
             chat_repository: 聊天仓储
-            llm_service: LLM 服务
+            llm_service: LLM 服务（未配置 API Key 时为 None，仅只读接口可用）
             novel_repository: 小说仓储
             bible_repository: Bible 仓储
             cast_repository: Cast 仓储
@@ -110,6 +110,9 @@ class ChatService:
         user_msg = ChatMessage.create_user_message(message)
         thread.add_message(user_msg)
 
+        if self.llm_service is None:
+            raise ValueError("LLM 未配置：请设置环境变量 ANTHROPIC_API_KEY")
+
         # 构建提示词
         prompt = await self._build_prompt(novel_id, thread, history_mode, use_cast_tools)
 
@@ -176,6 +179,10 @@ class ChatService:
         # 添加用户消息
         user_msg = ChatMessage.create_user_message(message)
         thread.add_message(user_msg)
+
+        if self.llm_service is None:
+            yield {"type": "error", "message": "LLM 未配置：请设置环境变量 ANTHROPIC_API_KEY"}
+            return
 
         # 构建提示词
         prompt = await self._build_prompt(novel_id, thread, history_mode, use_cast_tools)

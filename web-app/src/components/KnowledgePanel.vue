@@ -21,17 +21,11 @@
       </n-button>
     </header>
 
-    <n-segmented
-      v-model:value="sideTab"
-      class="kp-seg"
-      size="small"
-      block
-      :options="[
-        { label: '叙事与知识', value: 'narrative' },
-        { label: '关系图', value: 'graph' },
-        { label: '三元组图谱', value: 'triple' },
-      ]"
-    />
+    <n-radio-group v-model:value="sideTab" class="kp-seg" size="small">
+      <n-radio-button value="narrative">叙事与知识</n-radio-button>
+      <n-radio-button value="graph">关系图</n-radio-button>
+      <n-radio-button value="triple">三元组图谱</n-radio-button>
+    </n-radio-group>
 
     <div v-show="sideTab === 'narrative'" class="kp-banner">
       <span class="kp-banner-dot" aria-hidden="true" />
@@ -248,7 +242,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
-import { bookApi } from '../api/book'
+import { chapterApi } from '../api/chapter'
 import { knowledgeApi } from '../api/knowledge'
 import CastGraphCompact from './CastGraphCompact.vue'
 import KnowledgeTripleGraph from './KnowledgeTripleGraph.vue'
@@ -330,10 +324,10 @@ const chapterTitle = (cid: number) => outlineTitles.value[cid] || ''
 
 const loadOutlineTitles = async () => {
   try {
-    const d = await bookApi.getDesk(props.slug)
+    const list = await chapterApi.listChapters(props.slug)
     const m: Record<number, string> = {}
-    for (const ch of d.chapters || []) {
-      if (ch.id != null) m[Number(ch.id)] = (ch.title || '').trim()
+    for (const ch of list) {
+      if (ch.number != null) m[Number(ch.number)] = (ch.title || '').trim()
     }
     outlineTitles.value = m
   } catch {

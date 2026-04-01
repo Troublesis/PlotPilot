@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { bookApi } from '../api/book'
+import { castApi } from '../api/cast'
 import GraphChart from './charts/GraphChart.vue'
 import { convertGraph, type VisNode, type VisEdge } from '../utils/visToEcharts'
 import type { EChartsNode, EChartsLink } from '../utils/visToEcharts'
@@ -98,7 +98,7 @@ const reload = async () => {
 
   loading.value = true
   try {
-    const data = await bookApi.getCast(props.slug)
+    const data = await castApi.getCast(props.slug)
 
     // Only update if this is still the latest request
     if (currentRequestId === requestId) {

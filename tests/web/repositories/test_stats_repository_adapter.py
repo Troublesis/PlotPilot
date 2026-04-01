@@ -154,9 +154,19 @@ class TestStatsRepositoryAdapter:
         assert count == 0
 
     def test_get_book_outline(self, temp_data_dir):
-        """Test getting book outline (not yet implemented)"""
+        """Outline is derived from novel JSON chapters for StatsService."""
         adapter = StatsRepositoryAdapter(temp_data_dir)
         outline = adapter.get_book_outline("test-novel-1")
 
-        # Should return None as outlines are not yet implemented
-        assert outline is None
+        assert outline is not None
+        assert "chapters" in outline
+        assert len(outline["chapters"]) == 2
+        assert outline["chapters"][0]["id"] == 1
+        assert outline["chapters"][0]["title"] == "第一章"
+        assert outline["chapters"][1]["id"] == 2
+
+    def test_get_book_outline_empty_chapters(self, temp_data_dir):
+        adapter = StatsRepositoryAdapter(temp_data_dir)
+        outline = adapter.get_book_outline("test-novel-2")
+        assert outline is not None
+        assert outline["chapters"] == []

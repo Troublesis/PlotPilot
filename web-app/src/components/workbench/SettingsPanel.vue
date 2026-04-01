@@ -11,15 +11,13 @@ import KnowledgePanel from '../KnowledgePanel.vue'
 
 interface Props {
   slug: string
-  panel?: 'bible' | 'knowledge'
+  /** 与 Workbench 的 `current-panel` 对应 */
+  currentPanel?: 'bible' | 'knowledge'
   bibleKey?: number
 }
 
-// Note: While spec suggested settings/props pattern, child components (BiblePanel/KnowledgePanel)
-// are fully self-contained and manage their own state internally. Using delegation pattern
-// avoids unnecessary duplication and maintains clean separation of concerns.
 withDefaults(defineProps<Props>(), {
-  panel: 'knowledge',
+  currentPanel: 'knowledge',
   bibleKey: 0,
 })
 </script>

@@ -9,6 +9,7 @@ from interfaces.api.v1 import novels, chapters, bible, cast, ai, knowledge, chat
 from web.routers.stats import create_stats_router
 from web.services.stats_service import StatsService
 from web.repositories.stats_repository_adapter import StatsRepositoryAdapter
+from application.paths import DATA_DIR
 
 
 # 创建 FastAPI 应用
@@ -37,9 +38,7 @@ app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 
 # 注册统计路由（使用适配器连接新架构）
-from pathlib import Path
-data_root = Path("./data")  # 新架构的数据目录
-stats_repository = StatsRepositoryAdapter(data_root)
+stats_repository = StatsRepositoryAdapter(DATA_DIR)
 stats_service = StatsService(stats_repository)
 stats_router = create_stats_router(stats_service)
 app.include_router(stats_router, prefix="/api/stats", tags=["statistics"])

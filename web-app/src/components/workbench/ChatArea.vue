@@ -86,11 +86,10 @@
 
     <div class="composer">
       <div class="composer-toolbar">
-        <n-segmented
-          v-model:value="historyMode"
-          size="small"
-          :options="historySegmentOptions"
-        />
+        <n-radio-group v-model:value="historyMode" size="small">
+          <n-radio-button value="full">带历史</n-radio-button>
+          <n-radio-button value="fresh">仅本轮</n-radio-button>
+        </n-radio-group>
         <n-space :size="6" align="center" wrap>
           <n-select
             v-model:value="chapterPick"
@@ -192,10 +191,6 @@ const inputMessage = ref('')
 const sending = ref(false)
 /** 对话上下文：full 带多轮；fresh 仅本轮用户句 + 全书 system */
 const historyMode = ref<'full' | 'fresh'>('full')
-const historySegmentOptions = [
-  { label: '带历史', value: 'full' },
-  { label: '仅本轮', value: 'fresh' },
-]
 const chapterPick = ref<number | null>(null)
 /** 与「清空上下文」下拉不同：仅本条 user 写入前清空 thread */
 const clearBeforeSend = ref(false)

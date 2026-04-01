@@ -124,7 +124,7 @@
 | `api/knowledge.ts` | `/api/v1`（axios） | Knowledge 全部 | 已对齐 |
 | `api/chat.ts` | `/api/v1`（axios + `fetch` 流式） | Chat 全部 | 已对齐 |
 | `api/ai.ts` | `apiClient` | `POST .../ai/generate-chapter` | 后端有；**当前业务组件未引用** |
-| `api/stats.ts` | `/api`（相对，经代理） | `/api/stats/*` | 已对齐 |
+| `api/stats.ts` | `/api`（相对，经代理）；响应拦截器解包 `SuccessResponse.data` | `/api/stats/*` | 已对齐 |
 | `api/book.ts` | `/api`（相对） | 见下节「遗留」 | **后端无对应路由** |
 
 ---
@@ -144,7 +144,8 @@
 | 聊天（旧） | * | `/api/book/{slug}/chat*` | 请用 `api/chat.ts` |
 | **任务** | POST/GET | `/api/jobs/{slug}/plan`、`/write`、`/run`、`/export`、`/api/jobs/{jobId}/*` | **后端暂无 Job 模块** |
 
-仍从 `book.ts` 引用 **`bookApi`** 的组件（需逐步替换）：`BiblePanel.vue`、`CastGraphCompact.vue`、`KnowledgePanel.vue`、`KnowledgeTripleGraph.vue`、`Chapter.vue`（部分）等。  
+仍从 `book.ts` 引用 **`bookApi`** 的组件（需逐步替换）：`BiblePanel.vue`、`Chapter.vue`（部分）等。  
+**图表侧栏已对接 v1**：`CastGraphCompact.vue` → `castApi`；`KnowledgeTripleGraph.vue`、`KnowledgePanel.vue`（叙事/检索/保存）→ `knowledgeApi`，章标题来自 `chapterApi.listChapters`。  
 **`jobApi`**：`useWorkbench.ts`、`JobStatusIndicator.vue`。
 
 ---
@@ -158,8 +159,8 @@
 | `ChatArea.vue` | `chat.ts` → `chatApi` |
 | `Cast.vue` | `castApi` |
 | `BiblePanel.vue` | `bookApi`（遗留） |
-| `KnowledgePanel.vue`、`KnowledgeTripleGraph.vue` | `bookApi`（遗留）+ `knowledgeApi` |
-| `CastGraphCompact.vue` | `bookApi`（遗留） |
+| `KnowledgePanel.vue`、`KnowledgeTripleGraph.vue` | `knowledgeApi`；章名 via `chapterApi` |
+| `CastGraphCompact.vue` | `castApi` |
 | `Chapter.vue` | `chapterApi` + `bookApi`（遗留） |
 | `statsStore` / 侧栏统计 | `statsApi` |
 | `JobStatusIndicator.vue` | `jobApi`（无后端） |
@@ -186,4 +187,4 @@
 
 | 日期 | 说明 |
 |------|------|
-| 2026-04-02 | 初版：汇总路由、前端模块、遗留与缺口 |
+| 2026-04-02 | 初版；图表 v1 对接；统计修复（`stats.ts` 解包 `SuccessResponse`；adapter 从 `novels/*.json` 提供 outline） |

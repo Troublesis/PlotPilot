@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from functools import lru_cache
 
+from application.paths import DATA_DIR
 from infrastructure.persistence.storage.file_storage import FileStorage
 from infrastructure.persistence.repositories.file_novel_repository import FileNovelRepository
 from infrastructure.persistence.repositories.file_chapter_repository import FileChapterRepository
@@ -37,7 +38,7 @@ def get_storage() -> FileStorage:
     """
     global _storage
     if _storage is None:
-        _storage = FileStorage(Path("./data"))
+        _storage = FileStorage(DATA_DIR)
     return _storage
 
 
@@ -168,15 +169,16 @@ def get_knowledge_service() -> KnowledgeService:
 def get_chat_service() -> ChatService:
     """获取 Chat 服务
 
+    读取消息等不依赖 LLM；未配置 ANTHROPIC_API_KEY 时仍可拉取历史，发送/流式时再报错。
+
     Returns:
         ChatService 实例
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
-
-    settings = Settings(api_key=api_key)
-    llm_service = AnthropicProvider(settings)
+    llm_service = None
+    if api_key:
+        settings = Settings(api_key=api_key)
+        llm_service = AnthropicProvider(settings)
 
     return ChatService(
         get_chat_repository(),
