@@ -1,4 +1,5 @@
-from typing import List, Optional
+import logging
+from typing import List, Optional, TYPE_CHECKING, Dict, Any
 from application.services.bible_service import BibleService
 from domain.bible.services.relationship_engine import RelationshipEngine
 from domain.novel.services.storyline_manager import StorylineManager
@@ -7,6 +8,11 @@ from domain.novel.repositories.chapter_repository import ChapterRepository
 from domain.novel.repositories.plot_arc_repository import PlotArcRepository
 from domain.novel.value_objects.novel_id import NovelId
 from domain.ai.services.vector_store import VectorStore
+
+if TYPE_CHECKING:
+    from application.dtos.scene_director_dto import SceneDirectorAnalysis
+
+logger = logging.getLogger(__name__)
 
 
 class ContextBuilder:
@@ -19,6 +25,32 @@ class ContextBuilder:
     - Layer 2: 智能检索 (~20K tokens) - 角色信息、相关章节、事件、关系
     - Layer 3: 最近上下文 (~10K tokens) - 最近章节、角色活动、关系变化
     """
+
+    # Token estimation constant: 1 token ≈ 4 characters
+    CHARS_PER_TOKEN = 4
+
+    # Budget allocation ratios for context layers
+    LAYER1_BUDGET_RATIO = 0.15  # ~5K tokens
+    LAYER2_BUDGET_RATIO = 0.55  # ~20K tokens
+    LAYER3_BUDGET_RATIO = 0.30  # ~10K tokens
+
+    # Limits for content items
+    MAX_MILESTONES_PER_STORYLINE = 4
+    MAX_TIMELINE_NOTES = 16
+
+    # Truncation thresholds for descriptions
+    MILESTONE_DESC_TRUNCATE = 120
+    TIMELINE_NOTE_DESC_TRUNCATE = 160
+    CHAPTER_CONTENT_PREVIEW_TRUNCATE = 200
+
+    # Budget thresholds for different content types
+    # Characters get 60% of remaining budget before stopping
+    CHARACTER_BUDGET_THRESHOLD = 0.6
+    # Locations get 80% of remaining budget before stopping
+    LOCATION_BUDGET_THRESHOLD = 0.8
+    # Style notes get 100% of remaining budget before stopping
+    STYLE_BUDGET_THRESHOLD = 1.0
+
 
     def __init__(
         self,
@@ -57,9 +89,9 @@ class ContextBuilder:
             组装好的上下文字符串
         """
         # Token 预算分配
-        layer1_budget = int(max_tokens * 0.15)  # ~5K
-        layer2_budget = int(max_tokens * 0.55)  # ~20K
-        layer3_budget = int(max_tokens * 0.30)  # ~10K
+        layer1_budget = int(max_tokens * self.LAYER1_BUDGET_RATIO)
+        layer2_budget = int(max_tokens * self.LAYER2_BUDGET_RATIO)
+        layer3_budget = int(max_tokens * self.LAYER3_BUDGET_RATIO)
 
         # Layer 1: 核心上下文
         layer1 = self._build_layer1_core_context(
@@ -68,7 +100,7 @@ class ContextBuilder:
 
         # Layer 2: 智能检索
         layer2 = self._build_layer2_smart_retrieval(
-            novel_id, chapter_number, outline, layer2_budget
+            novel_id, chapter_number, outline, layer2_budget, scene_director=None
         )
 
         # Layer 3: 最近上下文
@@ -96,6 +128,64 @@ class ContextBuilder:
 
         return full_context
 
+    def build_structured_context(
+        self,
+        novel_id: str,
+        chapter_number: int,
+        outline: str,
+        max_tokens: int = 35000,
+        scene_director: Optional["SceneDirectorAnalysis"] = None,
+    ) -> Dict[str, Any]:
+        """构建结构化上下文，分层返回
+
+        Args:
+            novel_id: 小说 ID
+            chapter_number: 章节号
+            outline: 章节大纲
+            max_tokens: 最大 token 数
+            scene_director: 可选的场记分析，用于过滤角色和地点
+
+        Returns:
+            包含分层上下文和 token 使用情况的字典
+        """
+        # Token 预算分配
+        layer1_budget = int(max_tokens * self.LAYER1_BUDGET_RATIO)
+        layer2_budget = int(max_tokens * self.LAYER2_BUDGET_RATIO)
+        layer3_budget = int(max_tokens * self.LAYER3_BUDGET_RATIO)
+
+        # Layer 1: 核心上下文
+        layer1 = self._build_layer1_core_context(
+            novel_id, chapter_number, outline, layer1_budget
+        )
+
+        # Layer 2: 智能检索（可选过滤）
+        layer2 = self._build_layer2_smart_retrieval(
+            novel_id, chapter_number, outline, layer2_budget, scene_director=scene_director
+        )
+
+        # Layer 3: 最近上下文
+        layer3 = self._build_layer3_recent_context(
+            novel_id, chapter_number, layer3_budget
+        )
+
+        # 计算 token 使用情况
+        layer1_tokens = self.estimate_tokens(layer1)
+        layer2_tokens = self.estimate_tokens(layer2)
+        layer3_tokens = self.estimate_tokens(layer3)
+        total_tokens = layer1_tokens + layer2_tokens + layer3_tokens
+
+        return {
+            "layer1_text": layer1,
+            "layer2_text": layer2,
+            "layer3_text": layer3,
+            "token_usage": {
+                "layer1": layer1_tokens,
+                "layer2": layer2_tokens,
+                "layer3": layer3_tokens,
+                "total": total_tokens,
+            },
+        }
+
     def estimate_tokens(self, text: str) -> int:
         """估算 token 数量
 
@@ -107,7 +197,7 @@ class ContextBuilder:
         Returns:
             估算的 token 数
         """
-        return len(text) // 4
+        return len(text) // self.CHARS_PER_TOKEN
 
     def _build_layer1_core_context(
         self,
@@ -165,14 +255,14 @@ class ContextBuilder:
                 )
                 pending = storyline.get_pending_milestones()
                 if pending:
-                    for m in pending[:4]:
-                        desc = (m.description or "")[:120]
+                    for m in pending[:self.MAX_MILESTONES_PER_STORYLINE]:
+                        desc = (m.description or "")[:self.MILESTONE_DESC_TRUNCATE]
                         parts.append(
                             f"  • Milestone #{m.order} {m.title}: {desc}"
-                            + ("…" if len(m.description or "") > 120 else "")
+                            + ("…" if len(m.description or "") > self.MILESTONE_DESC_TRUNCATE else "")
                         )
-                    if len(pending) > 4:
-                        parts.append(f"  • …and {len(pending) - 4} more pending milestones")
+                    if len(pending) > self.MAX_MILESTONES_PER_STORYLINE:
+                        parts.append(f"  • …and {len(pending) - self.MAX_MILESTONES_PER_STORYLINE} more pending milestones")
 
         # 情节弧：本章期望张力与下一锚点
         if self.plot_arc_repository is not None:
@@ -187,16 +277,15 @@ class ContextBuilder:
                         parts.append(
                             f"- Next plot anchor: chapter {next_point.chapter_number} — {next_point.description}"
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to load plot arc: {e}")
 
         # Bible 时间线笔记（世界内时间参考）
         try:
             bible_dto = self.bible_service.get_bible_by_novel(novel_id)
             if bible_dto and bible_dto.timeline_notes:
                 parts.append("\nBible timeline notes (story-world time, do not contradict):")
-                max_notes = 16
-                for note in bible_dto.timeline_notes[:max_notes]:
+                for note in bible_dto.timeline_notes[:self.MAX_TIMELINE_NOTES]:
                     ev = (note.event or "").strip()
                     tp = (getattr(note, "time_point", None) or "").strip()
                     desc = (note.description or "").strip()
@@ -204,13 +293,13 @@ class ContextBuilder:
                     if tp:
                         line += f" @ {tp}"
                     if desc:
-                        short = desc[:160] + ("…" if len(desc) > 160 else "")
+                        short = desc[:self.TIMELINE_NOTE_DESC_TRUNCATE] + ("…" if len(desc) > self.TIMELINE_NOTE_DESC_TRUNCATE else "")
                         line += f": {short}"
                     parts.append(line)
-                if len(bible_dto.timeline_notes) > max_notes:
-                    parts.append(f"- …and {len(bible_dto.timeline_notes) - max_notes} more notes")
-        except Exception:
-            pass
+                if len(bible_dto.timeline_notes) > self.MAX_TIMELINE_NOTES:
+                    parts.append(f"- …and {len(bible_dto.timeline_notes) - self.MAX_TIMELINE_NOTES} more notes")
+        except Exception as e:
+            logger.warning(f"Failed to load Bible timeline notes: {e}")
 
         context = "\n".join(parts)
 
@@ -225,7 +314,8 @@ class ContextBuilder:
         novel_id: str,
         chapter_number: int,
         outline: str,
-        budget: int
+        budget: int,
+        scene_director: Optional["SceneDirectorAnalysis"] = None
     ) -> str:
         """构建 Layer 2: 智能检索
 
@@ -242,12 +332,14 @@ class ContextBuilder:
             chapter_number: 章节号
             outline: 章节大纲
             budget: token 预算
+            scene_director: 可选的场记分析，用于过滤角色和地点
 
         Returns:
             Layer 2 上下文字符串
         """
         parts = []
-        remaining_budget = budget
+        running_tokens = 0
+        budget_threshold_chars = budget * self.CHARS_PER_TOKEN
 
         # 从 Bible 获取数据
         bible_dto = self.bible_service.get_bible_by_novel(novel_id)
@@ -256,38 +348,60 @@ class ContextBuilder:
             # 角色信息
             if bible_dto.characters:
                 parts.append("Characters:")
-                for char in bible_dto.characters:
-                    char_info = f"- {char.name}: {char.description}"
+                running_tokens = self.estimate_tokens("\n".join(parts))
 
-                    # 检查预算
-                    if self.estimate_tokens("\n".join(parts) + char_info) > remaining_budget * 0.6:
+                for char in bible_dto.characters:
+                    # 如果提供了 scene_director 且指定了角色，则过滤
+                    if scene_director and scene_director.characters:
+                        if char.name not in scene_director.characters:
+                            continue
+
+                    char_info = f"- {char.name}: {char.description}"
+                    char_tokens = self.estimate_tokens(char_info)
+
+                    # 检查预算：字符预算阈值为 60%
+                    if running_tokens + char_tokens > budget_threshold_chars * self.CHARACTER_BUDGET_THRESHOLD:
                         break
 
                     parts.append(char_info)
+                    running_tokens += char_tokens
 
             # 地点信息
             if bible_dto.locations:
                 parts.append("\nLocations:")
-                for loc in bible_dto.locations:
-                    loc_info = f"- {loc.name} ({loc.location_type}): {loc.description}"
+                running_tokens = self.estimate_tokens("\n".join(parts))
 
-                    # 检查预算
-                    if self.estimate_tokens("\n".join(parts) + loc_info) > remaining_budget * 0.8:
+                for loc in bible_dto.locations:
+                    # 如果提供了 scene_director 且指定了地点，则过滤
+                    if scene_director and scene_director.locations:
+                        if loc.name not in scene_director.locations:
+                            continue
+
+                    loc_info = f"- {loc.name} ({loc.location_type}): {loc.description}"
+                    loc_tokens = self.estimate_tokens(loc_info)
+
+                    # 检查预算：地点预算阈值为 80%
+                    if running_tokens + loc_tokens > budget_threshold_chars * self.LOCATION_BUDGET_THRESHOLD:
                         break
 
                     parts.append(loc_info)
+                    running_tokens += loc_tokens
 
             # 风格设定
             if bible_dto.style_notes:
                 parts.append("\nStyle Guidelines:")
+                running_tokens = self.estimate_tokens("\n".join(parts))
+
                 for note in bible_dto.style_notes:
                     style_info = f"- {note.category}: {note.content}"
+                    style_tokens = self.estimate_tokens(style_info)
 
-                    # 检查预算
-                    if self.estimate_tokens("\n".join(parts) + style_info) > remaining_budget:
+                    # 检查预算：风格预算阈值为 100%
+                    if running_tokens + style_tokens > budget_threshold_chars * self.STYLE_BUDGET_THRESHOLD:
                         break
 
                     parts.append(style_info)
+                    running_tokens += style_tokens
 
         context = "\n".join(parts)
 
@@ -320,6 +434,7 @@ class ContextBuilder:
             Layer 3 上下文字符串
         """
         parts = []
+        running_tokens = 0
 
         # 最近章节
         all_chapters = self.chapter_repository.list_by_novel(NovelId(novel_id))
@@ -328,18 +443,23 @@ class ContextBuilder:
 
         if recent_chapters:
             parts.append("Recent Chapters:")
+            running_tokens = self.estimate_tokens("Recent Chapters:")
+
             for chapter in reversed(recent_chapters):  # 按时间顺序
                 summary = f"Chapter {chapter.number}: {chapter.title}"
                 # 添加简短内容摘要
                 if chapter.content:
-                    content_preview = chapter.content[:200] + "..." if len(chapter.content) > 200 else chapter.content
+                    content_preview = chapter.content[:self.CHAPTER_CONTENT_PREVIEW_TRUNCATE] + "..." if len(chapter.content) > self.CHAPTER_CONTENT_PREVIEW_TRUNCATE else chapter.content
                     summary += f"\n  {content_preview}"
-                parts.append(summary)
+
+                summary_tokens = self.estimate_tokens(summary)
 
                 # 检查预算
-                if self.estimate_tokens("\n".join(parts)) > budget:
-                    parts.pop()  # 移除最后一个
+                if running_tokens + summary_tokens > budget:
                     break
+
+                parts.append(summary)
+                running_tokens += summary_tokens
 
         context = "\n".join(parts)
 
@@ -351,7 +471,7 @@ class ContextBuilder:
 
     def _truncate_text(self, text: str, budget: int) -> str:
         """截断文本到指定 token 预算"""
-        target_chars = budget * 4  # 1 token ≈ 4 chars
+        target_chars = budget * self.CHARS_PER_TOKEN
         if len(text) <= target_chars:
             return text
         return text[:target_chars] + "..."

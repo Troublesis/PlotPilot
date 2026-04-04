@@ -1,5 +1,6 @@
 """ContextBuilder 单元测试（BibleService + 可选 PlotArcRepository）。"""
 import time
+from typing import Optional
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +10,7 @@ from application.dtos.bible_dto import (
     CharacterDTO,
     TimelineNoteDTO,
 )
+from application.dtos.scene_director_dto import SceneDirectorAnalysis
 from application.services.context_builder import ContextBuilder
 from domain.bible.value_objects.relationship_graph import RelationshipGraph
 from domain.novel.entities.plot_arc import PlotArc
@@ -40,12 +42,12 @@ def _empty_bible_dto(
 
 def _make_builder(
     *,
-    bible_dto: BibleDTO = None,
-    storyline_manager=None,
-    plot_arc_repository=None,
-    novel_repo=None,
-    chapter_repo=None,
-):
+    bible_dto: Optional[BibleDTO] = None,
+    storyline_manager: Optional[Mock] = None,
+    plot_arc_repository: Optional[Mock] = None,
+    novel_repo: Optional[Mock] = None,
+    chapter_repo: Optional[Mock] = None,
+) -> ContextBuilder:
     bible_service = Mock()
     bible_service.get_bible_by_novel.return_value = bible_dto or _empty_bible_dto()
 
@@ -111,6 +113,7 @@ class TestContextBuilder:
             outline="Test outline",
             max_tokens=5000,
         )
+        # Allow 10% buffer for estimation accuracy
         assert builder.estimate_tokens(context) <= 5500
 
     def test_build_context_includes_recent_chapters(self):
@@ -216,3 +219,23 @@ class TestContextBuilder:
         )
         assert time.time() - start < 2.0
         assert len(context) > 0
+
+    def test_layer2_filters_characters_when_scene_director_set(self):
+        dto = _empty_bible_dto(
+            characters=[
+                CharacterDTO("c1", "Alice", "Hero", []),
+                CharacterDTO("c2", "Bob", "Villain", []),
+            ]
+        )
+        builder = _make_builder(bible_dto=dto)
+        hint = SceneDirectorAnalysis(characters=["Alice"], locations=[], action_types=[], trigger_keywords=[], emotional_state="", pov="Alice")
+        structured = builder.build_structured_context(
+            novel_id="novel-1",
+            chapter_number=2,
+            outline="Alice fights",
+            max_tokens=35000,
+            scene_director=hint,
+        )
+        layer2 = structured["layer2_text"]
+        assert "Alice" in layer2
+        assert "Bob" not in layer2
