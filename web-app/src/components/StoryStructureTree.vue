@@ -16,7 +16,7 @@
 
     <n-empty
       v-else-if="!loading"
-      description="暂无叙事结构，请先执行「AI 初始规划」"
+      description="暂无叙事结构。请先查看右侧「文约设定」，确认无误后再执行「AI 初始规划」"
       class="structure-empty"
     />
 
@@ -70,13 +70,13 @@ const loadTree = async () => {
   try {
     const res = await structureApi.getTree(props.slug)
 
-    // 如果没有结构，自动初始化第一幕
-    if (!res.tree || res.tree.length === 0) {
-      await initializeStructure()
-      return
+    // 如果有结构，显示树形视图
+    if (res.tree && res.tree.length > 0) {
+      treeData.value = res.tree.map(convertToTreeNode)
+    } else {
+      // 没有结构时，显示空状态，不自动初始化
+      treeData.value = []
     }
-
-    treeData.value = res.tree.map(convertToTreeNode)
   } catch (e: any) {
     message.error(e?.response?.data?.detail || '加载结构失败')
   } finally {
