@@ -25,7 +25,12 @@ class KnowledgeTriple(BaseEntity):
         first_appearance: Optional[int] = None,
         related_chapters: Optional[List[int]] = None,
         tags: Optional[List[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None
+        attributes: Optional[Dict[str, Any]] = None,
+        confidence: Optional[float] = None,
+        source_type: Optional[str] = None,
+        subject_entity_id: Optional[str] = None,
+        object_entity_id: Optional[str] = None,
+        provenance: Optional[List[Dict[str, Any]]] = None,
     ):
         """初始化知识三元组
 
@@ -43,7 +48,12 @@ class KnowledgeTriple(BaseEntity):
             first_appearance: 首次出现的章节号
             related_chapters: 相关章节列表
             tags: 标签列表，如 ['主线', '重要', '伏笔']
-            attributes: 灵活的额外属性（JSON 对象）
+            attributes: 灵活键值（持久化为 triple_attr 子表，非库内 JSON 列）
+            confidence: 置信度 0~1，人工可空
+            source_type: manual|bible_generated|chapter_inferred|ai_generated
+            subject_entity_id: 绑定设定实体 id（可选）
+            object_entity_id: 绑定设定实体 id（可选）
+            provenance: 推断溯源（仅服务端写入；来自 triple_provenance 表）
         """
         super().__init__(id)
         self.subject = subject
@@ -59,6 +69,11 @@ class KnowledgeTriple(BaseEntity):
         self.related_chapters = related_chapters or []
         self.tags = tags or []
         self.attributes = attributes or {}
+        self.confidence = confidence
+        self.source_type = source_type
+        self.subject_entity_id = subject_entity_id
+        self.object_entity_id = object_entity_id
+        self.provenance = list(provenance or [])
 
     def __repr__(self) -> str:
         type_str = f" [{self.entity_type}]" if self.entity_type else ""

@@ -1,6 +1,5 @@
--- SQLite Schema for AiText Novel Generation System
+-- SQLite — 业务数据均为关系列/子表，不在库内存 JSON 文本列（Bible 等文件存储另议）
 
--- 小说表
 CREATE TABLE IF NOT EXISTS novels (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -11,7 +10,6 @@ CREATE TABLE IF NOT EXISTS novels (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 章节表
 CREATE TABLE IF NOT EXISTS chapters (
     id TEXT PRIMARY KEY,
     novel_id TEXT NOT NULL,
@@ -26,112 +24,56 @@ CREATE TABLE IF NOT EXISTS chapters (
     UNIQUE(novel_id, number)
 );
 
--- 人物表
-CREATE TABLE IF NOT EXISTS characters (
-    id TEXT PRIMARY KEY,
-    novel_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    role TEXT,  -- 主角/配角/反派/导师
-    description TEXT,
-    importance TEXT DEFAULT 'normal',  -- high/normal/low
-    metadata TEXT,  -- JSON 格式存储额外信息
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
-);
-
--- 三元组表（知识图谱）
+-- 三元组主行（无 JSON 列）
 CREATE TABLE IF NOT EXISTS triples (
     id TEXT PRIMARY KEY,
     novel_id TEXT NOT NULL,
     subject TEXT NOT NULL,
     predicate TEXT NOT NULL,
     object TEXT NOT NULL,
-    chapter_id TEXT,
+    chapter_number INTEGER,
     note TEXT,
-    entity_type TEXT,  -- 'character' | 'location' | NULL (通用)
-    importance TEXT,  -- 人物: 'primary'|'secondary'|'minor', 地点: 'core'|'important'|'normal'
-    location_type TEXT,  -- 地点类型: 'city'|'region'|'building'|'faction'|'realm'
-    description TEXT,  -- 实体描述
-    first_appearance TEXT,  -- 首次出现章节
-    related_chapters TEXT,  -- 相关章节列表 (JSON)
-    tags TEXT,  -- 标签 (JSON)
-    attributes TEXT,  -- 其他属性 (JSON)
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE,
-    FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE SET NULL
-);
-
--- 事件表（时间线）
-CREATE TABLE IF NOT EXISTS events (
-    id TEXT PRIMARY KEY,
-    novel_id TEXT NOT NULL,
-    chapter_id TEXT,
-    chapter_number INTEGER NOT NULL,
-    event_type TEXT NOT NULL,  -- character_introduction/relationship_change/conflict/revelation/decision
-    description TEXT NOT NULL,
-    story_time TEXT,  -- 故事时间（如"第3天"、"两年后"）
-    importance TEXT DEFAULT 'normal',  -- high/normal/low
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE,
-    FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE SET NULL
-);
-
--- 事件-人物关联表
-CREATE TABLE IF NOT EXISTS event_characters (
-    event_id TEXT NOT NULL,
-    character_id TEXT NOT NULL,
-    PRIMARY KEY (event_id, character_id),
-    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
-    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
-);
-
--- Bible 表（作品设定）
-CREATE TABLE IF NOT EXISTS bibles (
-    id TEXT PRIMARY KEY,
-    novel_id TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
-);
-
--- 地点表
-CREATE TABLE IF NOT EXISTS locations (
-    id TEXT PRIMARY KEY,
-    bible_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    location_type TEXT,  -- 城市/建筑/区域
+    entity_type TEXT,
+    importance TEXT,
+    location_type TEXT,
     description TEXT,
+    first_appearance INTEGER,
+    confidence REAL,
+    source_type TEXT,
+    subject_entity_id TEXT,
+    object_entity_id TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (bible_id) REFERENCES bibles(id) ON DELETE CASCADE
+    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE,
+    FOREIGN KEY (novel_id, chapter_number) REFERENCES chapters(novel_id, number) ON DELETE SET NULL
 );
 
--- 时间线笔记表
-CREATE TABLE IF NOT EXISTS timeline_notes (
-    id TEXT PRIMARY KEY,
-    bible_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    order_index INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (bible_id) REFERENCES bibles(id) ON DELETE CASCADE
+-- 除主 chapter_number 外，另有关联章节（多对多）
+CREATE TABLE IF NOT EXISTS triple_more_chapters (
+    triple_id TEXT NOT NULL,
+    novel_id TEXT NOT NULL,
+    chapter_number INTEGER NOT NULL,
+    PRIMARY KEY (triple_id, chapter_number),
+    FOREIGN KEY (triple_id) REFERENCES triples(id) ON DELETE CASCADE,
+    FOREIGN KEY (novel_id, chapter_number) REFERENCES chapters(novel_id, number) ON DELETE CASCADE
 );
 
--- 风格笔记表
-CREATE TABLE IF NOT EXISTS style_notes (
-    id TEXT PRIMARY KEY,
-    bible_id TEXT NOT NULL,
-    category TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (bible_id) REFERENCES bibles(id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS triple_tags (
+    triple_id TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (triple_id, tag),
+    FOREIGN KEY (triple_id) REFERENCES triples(id) ON DELETE CASCADE
 );
 
--- 知识表（novel_knowledge.json 的结构化版本）
+-- 扩展键值，值一律 TEXT（非 JSON）
+CREATE TABLE IF NOT EXISTS triple_attr (
+    triple_id TEXT NOT NULL,
+    attr_key TEXT NOT NULL,
+    attr_value TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (triple_id, attr_key),
+    FOREIGN KEY (triple_id) REFERENCES triples(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS knowledge (
     id TEXT PRIMARY KEY,
     novel_id TEXT UNIQUE NOT NULL,
@@ -142,7 +84,6 @@ CREATE TABLE IF NOT EXISTS knowledge (
     FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
 );
 
--- 章节摘要表（knowledge 中的 chapters）
 CREATE TABLE IF NOT EXISTS chapter_summaries (
     id TEXT PRIMARY KEY,
     knowledge_id TEXT NOT NULL,
@@ -154,19 +95,119 @@ CREATE TABLE IF NOT EXISTS chapter_summaries (
     UNIQUE(knowledge_id, chapter_number)
 );
 
--- 索引
 CREATE INDEX IF NOT EXISTS idx_chapters_novel_id ON chapters(novel_id);
 CREATE INDEX IF NOT EXISTS idx_chapters_number ON chapters(novel_id, number);
-CREATE INDEX IF NOT EXISTS idx_characters_novel_id ON characters(novel_id);
-CREATE INDEX IF NOT EXISTS idx_characters_name ON characters(novel_id, name);
 CREATE INDEX IF NOT EXISTS idx_triples_novel_id ON triples(novel_id);
 CREATE INDEX IF NOT EXISTS idx_triples_subject ON triples(novel_id, subject);
 CREATE INDEX IF NOT EXISTS idx_triples_predicate ON triples(predicate);
 CREATE INDEX IF NOT EXISTS idx_triples_entity_type ON triples(novel_id, entity_type);
-CREATE INDEX IF NOT EXISTS idx_triples_importance ON triples(importance);
-CREATE INDEX IF NOT EXISTS idx_events_novel_id ON events(novel_id);
-CREATE INDEX IF NOT EXISTS idx_events_chapter ON events(novel_id, chapter_number);
-CREATE INDEX IF NOT EXISTS idx_locations_bible_id ON locations(bible_id);
-CREATE INDEX IF NOT EXISTS idx_timeline_notes_bible_id ON timeline_notes(bible_id);
-CREATE INDEX IF NOT EXISTS idx_style_notes_bible_id ON style_notes(bible_id);
+CREATE INDEX IF NOT EXISTS idx_triples_chapter ON triples(novel_id, chapter_number);
+CREATE INDEX IF NOT EXISTS idx_triples_source ON triples(novel_id, source_type);
+CREATE INDEX IF NOT EXISTS idx_triple_more_chapters_triple ON triple_more_chapters(triple_id);
+CREATE INDEX IF NOT EXISTS idx_triple_tags_triple ON triple_tags(triple_id);
+CREATE INDEX IF NOT EXISTS idx_triple_attr_triple ON triple_attr(triple_id);
 CREATE INDEX IF NOT EXISTS idx_chapter_summaries_knowledge_id ON chapter_summaries(knowledge_id);
+
+-- 三元组溯源：关联 story_nodes / chapter_elements（推断证据链，非 JSON 列）
+CREATE TABLE IF NOT EXISTS triple_provenance (
+    id TEXT PRIMARY KEY,
+    triple_id TEXT NOT NULL,
+    novel_id TEXT NOT NULL,
+    story_node_id TEXT,
+    chapter_element_id TEXT,
+    rule_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'primary',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (triple_id) REFERENCES triples(id) ON DELETE CASCADE,
+    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_triple_provenance_triple ON triple_provenance(triple_id);
+CREATE INDEX IF NOT EXISTS idx_triple_provenance_novel ON triple_provenance(novel_id);
+CREATE INDEX IF NOT EXISTS idx_triple_provenance_story_node ON triple_provenance(story_node_id);
+
+-- 同一三元组下同规则+章节节点+元素行只保留一条（INSERT OR IGNORE 依赖）
+CREATE UNIQUE INDEX IF NOT EXISTS ux_triple_provenance_with_element
+ON triple_provenance (triple_id, rule_id, story_node_id, chapter_element_id)
+WHERE chapter_element_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_triple_provenance_null_element
+ON triple_provenance (triple_id, rule_id, IFNULL(story_node_id, ''))
+WHERE chapter_element_id IS NULL;
+
+-- 故事结构（知识图谱推断依赖；不设 characters/locations 外键以免缺表）
+CREATE TABLE IF NOT EXISTS story_nodes (
+    id TEXT PRIMARY KEY,
+    novel_id TEXT NOT NULL,
+    parent_id TEXT,
+    node_type TEXT NOT NULL CHECK(node_type IN ('part', 'volume', 'act', 'chapter')),
+    number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    order_index INTEGER NOT NULL,
+    planning_status TEXT DEFAULT 'draft'
+      CHECK(planning_status IN ('draft', 'ai_generated', 'user_edited', 'confirmed')),
+    planning_source TEXT DEFAULT 'manual'
+      CHECK(planning_source IN ('manual', 'ai_macro', 'ai_act')),
+    chapter_start INTEGER,
+    chapter_end INTEGER,
+    chapter_count INTEGER DEFAULT 0,
+    suggested_chapter_count INTEGER,
+    content TEXT,
+    outline TEXT,
+    word_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'draft',
+    themes TEXT,
+    key_events TEXT,
+    narrative_arc TEXT,
+    conflicts TEXT,
+    pov_character_id TEXT,
+    timeline_start TEXT,
+    timeline_end TEXT,
+    metadata TEXT DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES story_nodes(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_story_nodes_novel_id ON story_nodes(novel_id);
+
+CREATE TABLE IF NOT EXISTS chapter_elements (
+    id TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL,
+    element_type TEXT NOT NULL CHECK(element_type IN ('character', 'location', 'item', 'organization', 'event')),
+    element_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL CHECK(relation_type IN (
+        'appears', 'mentioned', 'scene', 'uses', 'involved', 'occurs'
+    )),
+    importance TEXT DEFAULT 'normal' CHECK(importance IN ('major', 'normal', 'minor')),
+    appearance_order INTEGER,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chapter_id) REFERENCES story_nodes(id) ON DELETE CASCADE,
+    UNIQUE(chapter_id, element_type, element_id, relation_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chapter_elements_chapter ON chapter_elements(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_chapter_elements_element ON chapter_elements(element_type, element_id);
+
+CREATE TABLE IF NOT EXISTS chapter_scenes (
+    id TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL,
+    scene_number INTEGER NOT NULL,
+    location_id TEXT,
+    timeline TEXT,
+    summary TEXT,
+    purpose TEXT,
+    content TEXT,
+    word_count INTEGER DEFAULT 0,
+    characters TEXT,
+    order_index INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chapter_id) REFERENCES story_nodes(id) ON DELETE CASCADE,
+    UNIQUE(chapter_id, scene_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chapter_scenes_chapter ON chapter_scenes(chapter_id);

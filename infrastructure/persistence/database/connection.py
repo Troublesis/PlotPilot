@@ -8,6 +8,73 @@ from contextlib import contextmanager
 logger = logging.getLogger(__name__)
 
 
+def _migrate_triples_columns(conn: sqlite3.Connection) -> None:
+    """为已存在的 triples 表补齐统一知识模型列（开发期可重复执行）。"""
+    cur = conn.execute("PRAGMA table_info(triples)")
+    cols = {row[1] for row in cur.fetchall()}
+    if not cols:
+        return
+    alters = []
+    if "confidence" not in cols:
+        alters.append("ALTER TABLE triples ADD COLUMN confidence REAL")
+    if "source_type" not in cols:
+        alters.append("ALTER TABLE triples ADD COLUMN source_type TEXT")
+    if "subject_entity_id" not in cols:
+        alters.append("ALTER TABLE triples ADD COLUMN subject_entity_id TEXT")
+    if "object_entity_id" not in cols:
+        alters.append("ALTER TABLE triples ADD COLUMN object_entity_id TEXT")
+    for sql in alters:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError as e:
+            logger.warning("triples migration skip: %s — %s", sql, e)
+    conn.commit()
+
+
+def _ensure_triple_provenance_table(conn: sqlite3.Connection) -> None:
+    """旧库补齐 triple_provenance 表（schema.sql 对新库已包含）。"""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS triple_provenance (
+            id TEXT PRIMARY KEY,
+            triple_id TEXT NOT NULL,
+            novel_id TEXT NOT NULL,
+            story_node_id TEXT,
+            chapter_element_id TEXT,
+            rule_id TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'primary',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (triple_id) REFERENCES triples(id) ON DELETE CASCADE,
+            FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_triple_provenance_triple ON triple_provenance(triple_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_triple_provenance_novel ON triple_provenance(novel_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_triple_provenance_story_node ON triple_provenance(story_node_id)"
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_triple_provenance_with_element
+        ON triple_provenance (triple_id, rule_id, story_node_id, chapter_element_id)
+        WHERE chapter_element_id IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_triple_provenance_null_element
+        ON triple_provenance (triple_id, rule_id, IFNULL(story_node_id, ''))
+        WHERE chapter_element_id IS NULL
+        """
+    )
+    conn.commit()
+
+
 class DatabaseConnection:
     """SQLite 数据库连接管理器"""
 
@@ -41,6 +108,8 @@ class DatabaseConnection:
         else:
             logger.warning(f"Schema file not found: {schema_path}")
 
+        _migrate_triples_columns(conn)
+        _ensure_triple_provenance_table(conn)
         conn.close()
 
     def get_connection(self) -> sqlite3.Connection:

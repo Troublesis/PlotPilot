@@ -10,10 +10,12 @@ import json
 
 
 class SourceType(str, Enum):
-    """来源类型"""
-    MANUAL = "manual"              # 手动创建
-    AUTO_INFERRED = "auto_inferred"  # 自动推断
-    AI_GENERATED = "ai_generated"    # AI 生成
+    """来源类型（与 triples.source_type 及 API 对齐）"""
+    MANUAL = "manual"
+    AUTO_INFERRED = "auto_inferred"  # 兼容旧 API，持久化为 chapter_inferred
+    CHAPTER_INFERRED = "chapter_inferred"  # 章节/结构推断
+    BIBLE_GENERATED = "bible_generated"  # 自动 Bible 写入
+    AI_GENERATED = "ai_generated"
 
 
 @dataclass
@@ -57,7 +59,7 @@ class Triple:
 
     def is_auto_inferred(self) -> bool:
         """是否是自动推断的"""
-        return self.source_type == SourceType.AUTO_INFERRED
+        return self.source_type in (SourceType.AUTO_INFERRED, SourceType.CHAPTER_INFERRED)
 
     def is_confirmed(self) -> bool:
         """是否已确认（置信度为 1.0）"""

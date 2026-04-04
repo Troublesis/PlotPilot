@@ -12,6 +12,8 @@ from infrastructure.persistence.database.chapter_element_repository import Chapt
 from infrastructure.persistence.database.story_node_repository import StoryNodeRepository
 from application.paths import get_db_path
 from domain.bible.triple import SourceType
+from infrastructure.persistence.database.sqlite_knowledge_repository import SqliteKnowledgeRepository
+from interfaces.api.dependencies import get_knowledge_repository
 
 
 router = APIRouter(prefix="/api/v1/knowledge-graph", tags=["knowledge-graph"])
@@ -35,6 +37,88 @@ def get_triple_repo() -> TripleRepository:
 
 
 # ==================== API 端点 ====================
+
+@router.get("/novels/{novel_id}/chapters/by-number/{chapter_number}/inference-evidence")
+async def get_chapter_inference_evidence(
+    novel_id: str,
+    chapter_number: int,
+    kr: SqliteKnowledgeRepository = Depends(get_knowledge_repository),
+):
+    """
+    按正文章节号解析 story_nodes 章节节点，返回本章关联的推断三元组及证据行（chapter_inferred）。
+    """
+    try:
+        snid = kr.find_story_node_id_for_chapter_number(novel_id, chapter_number)
+        if not snid:
+            return {
+                "success": True,
+                "data": {
+                    "story_node_id": None,
+                    "chapter_number": chapter_number,
+                    "facts": [],
+                    "hint": "未找到对应故事结构中的章节节点（需在规划中维护 chapter 类型节点且 number 与正文章节号一致）",
+                },
+            }
+        facts = kr.list_chapter_inference_evidence(novel_id, snid)
+        return {
+            "success": True,
+            "data": {
+                "story_node_id": snid,
+                "chapter_number": chapter_number,
+                "facts": facts,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"加载本章推断证据失败: {str(e)}")
+
+
+@router.delete("/novels/{novel_id}/chapters/by-number/{chapter_number}/inference")
+async def revoke_chapter_inference_for_chapter_number(
+    novel_id: str,
+    chapter_number: int,
+    kr: SqliteKnowledgeRepository = Depends(get_knowledge_repository),
+):
+    """
+    撤销本章下的推断：删除 triple_provenance 中本 story_node 的证据；
+    若某三元组不再有任何证据且为 chapter_inferred，则删除该三元组。
+    """
+    try:
+        snid = kr.find_story_node_id_for_chapter_number(novel_id, chapter_number)
+        if not snid:
+            raise HTTPException(
+                status_code=404,
+                detail="未找到故事结构章节节点，无法按章撤销推断",
+            )
+        stats = kr.revoke_chapter_inference_for_story_node(novel_id, snid)
+        return {"success": True, "data": stats}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"撤销本章推断失败: {str(e)}")
+
+
+@router.delete("/novels/{novel_id}/inferred-triples/{triple_id}")
+async def revoke_single_chapter_inferred_triple(
+    novel_id: str,
+    triple_id: str,
+    kr: SqliteKnowledgeRepository = Depends(get_knowledge_repository),
+):
+    """仅删除 source_type=chapter_inferred 的三元组（级联删除其 triple_provenance）。"""
+    try:
+        outcome = kr.try_delete_chapter_inferred_triple(novel_id, triple_id)
+        if outcome == "not_found":
+            raise HTTPException(status_code=404, detail="三元组不存在")
+        if outcome == "not_inferred":
+            raise HTTPException(
+                status_code=400,
+                detail="只能撤销 chapter_inferred 来源的推断三元组",
+            )
+        return {"success": True, "message": "已撤销该条推断"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"撤销推断失败: {str(e)}")
+
 
 @router.post("/novels/{novel_id}/infer")
 async def infer_novel_knowledge_graph(

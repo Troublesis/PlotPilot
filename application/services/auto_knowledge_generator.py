@@ -1,9 +1,13 @@
 """自动 Knowledge 生成器 - 从小说 Bible 生成初始知识图谱"""
 import logging
-import json
 from typing import Dict, Any
 from domain.ai.services.llm_service import LLMService, GenerationConfig
 from domain.ai.value_objects.prompt import Prompt
+from application.ai.knowledge_llm_contract import (
+    build_initial_knowledge_system_prompt,
+    parse_initial_knowledge_llm_response,
+    to_knowledge_service_update_dict,
+)
 from application.services.knowledge_service import KnowledgeService
 
 logger = logging.getLogger(__name__)
@@ -54,29 +58,7 @@ class AutoKnowledgeGenerator:
 
         context_section = f"\n\n**小说设定摘要：**\n{bible_summary}" if bible_summary.strip() else ""
 
-        system_prompt = """你是专业的小说知识图谱构建助手。根据小说标题和设定，生成核心知识。
-
-**重要：只输出 JSON，不要有任何其他文字。**
-
-JSON 格式：
-{
-  "premise_lock": "一句话核心梗概（50-100字，概括故事主线、主角目标、核心冲突）",
-  "facts": [
-    {
-      "id": "fact-001",
-      "subject": "主语（角色名/地点名/概念）",
-      "predicate": "关系谓词（如：是、属于、位于、能力是、目标是）",
-      "object": "宾语",
-      "note": "说明（可空）"
-    }
-  ]
-}
-
-facts 要求：
-- 提取 5-10 条核心世界观设定知识三元组
-- 覆盖主要角色身份、核心地点、关键规则/能力设定
-- 只写确定的设定，不要推测"""
-
+        system_prompt = build_initial_knowledge_system_prompt()
         user_prompt = f"小说标题：《{title}》{context_section}\n\n请生成初始知识图谱。只输出 JSON。"
 
         prompt = Prompt(system=system_prompt, user=user_prompt)
@@ -84,51 +66,53 @@ facts 要求：
 
         result = await self.llm_service.generate(prompt, config)
 
-        return self._parse_json_response(result.content)
+        payload, errors = parse_initial_knowledge_llm_response(result.content)
+        if payload is None:
+            logger.warning(
+                "AutoKnowledgeGenerator: LLM 输出未通过契约校验: %s",
+                "; ".join(errors) if errors else "unknown",
+            )
+            return {
+                "version": 1,
+                "premise_lock": "",
+                "chapters": [],
+                "facts": [],
+            }
 
-    def _parse_json_response(self, raw: str) -> Dict[str, Any]:
-        """解析 LLM 返回的 JSON，处理 markdown 代码块包装"""
-        content = raw.strip()
-
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0]
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0]
-
-        content = content.strip()
-
-        start = content.find('{')
-        end = content.rfind('}')
-        if start != -1 and end != -1:
-            content = content[start:end + 1]
-
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError as e:
-            logger.warning(f"AutoKnowledgeGenerator failed to parse JSON: {e}")
-            return {"premise_lock": "", "facts": []}
+        return to_knowledge_service_update_dict(payload)
 
     def _save_to_knowledge(self, novel_id: str, knowledge_data: Dict[str, Any]) -> None:
-        """保存到 Knowledge"""
+        """保存到 Knowledge（兼容带 version/chapters 的完整 update 字典）。"""
         premise_lock = knowledge_data.get("premise_lock", "")
         facts_data = knowledge_data.get("facts", [])
 
-        # 构建完整的 knowledge 数据结构
         data = {
-            "version": 1,
+            "version": knowledge_data.get("version", 1),
             "premise_lock": premise_lock,
-            "chapters": [],
+            "chapters": knowledge_data.get("chapters", []),
             "facts": [
                 {
                     "id": f.get("id", f"fact-{i+1:03d}"),
                     "subject": f.get("subject", ""),
                     "predicate": f.get("predicate", ""),
                     "object": f.get("object", ""),
-                    "chapter_id": None,
-                    "note": f.get("note", "")
+                    "chapter_id": f.get("chapter_id"),
+                    "note": f.get("note", "") or "",
+                    "entity_type": f.get("entity_type"),
+                    "importance": f.get("importance"),
+                    "location_type": f.get("location_type"),
+                    "description": f.get("description"),
+                    "first_appearance": f.get("first_appearance"),
+                    "related_chapters": f.get("related_chapters", []),
+                    "tags": f.get("tags", []),
+                    "attributes": f.get("attributes", {}),
+                    "confidence": f.get("confidence"),
+                    "source_type": f.get("source_type", "ai_generated"),
+                    "subject_entity_id": f.get("subject_entity_id"),
+                    "object_entity_id": f.get("object_entity_id"),
                 }
                 for i, f in enumerate(facts_data)
-            ]
+            ],
         }
 
         self.knowledge_service.update_knowledge(novel_id, data)

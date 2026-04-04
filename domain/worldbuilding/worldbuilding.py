@@ -42,6 +42,47 @@ class Worldbuilding:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
+    @property
+    def core_rules(self) -> dict:
+        return {
+            "power_system": self.power_system,
+            "physics_rules": self.physics_rules,
+            "magic_tech": self.magic_tech,
+        }
+
+    @property
+    def geography(self) -> dict:
+        return {
+            "terrain": self.terrain,
+            "climate": self.climate,
+            "resources": self.resources,
+            "ecology": self.ecology,
+        }
+
+    @property
+    def society(self) -> dict:
+        return {
+            "politics": self.politics,
+            "economy": self.economy,
+            "class_system": self.class_system,
+        }
+
+    @property
+    def culture(self) -> dict:
+        return {
+            "history": self.history,
+            "religion": self.religion,
+            "taboos": self.taboos,
+        }
+
+    @property
+    def daily_life(self) -> dict:
+        return {
+            "food_clothing": self.food_clothing,
+            "language_slang": self.language_slang,
+            "entertainment": self.entertainment,
+        }
+
     def to_dict(self) -> dict:
         """转换为字典"""
         return {

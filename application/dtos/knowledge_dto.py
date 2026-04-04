@@ -30,6 +30,17 @@ class KnowledgeTripleDTO(BaseModel):
     related_chapters: List[int] = Field(default_factory=list, description="相关章节列表")
     tags: List[str] = Field(default_factory=list, description="标签列表")
     attributes: Dict[str, Any] = Field(default_factory=dict, description="额外属性")
+    confidence: Optional[float] = Field(default=None, description="置信度 0~1")
+    source_type: Optional[str] = Field(
+        default=None,
+        description="来源: manual|bible_generated|chapter_inferred|ai_generated",
+    )
+    subject_entity_id: Optional[str] = Field(default=None, description="主语实体 id")
+    object_entity_id: Optional[str] = Field(default=None, description="宾语实体 id")
+    provenance: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="服务端返回的推断溯源（PUT 时会被忽略，不由客户端持久化）",
+    )
 
 
 class StoryKnowledgeDTO(BaseModel):

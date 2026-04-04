@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """
-数据库迁移：故事结构规划 + 知识图谱自动推断
-执行时间：2026-04-04
+已废弃：请使用 `infrastructure/persistence/database/schema.sql` 作为唯一建表真源
+（由 DatabaseConnection 在启动时 executescript）。
 
-迁移内容：
-1. story_nodes 表：添加规划相关字段
-2. chapter_elements 表：章节与 Bible 元素关联
-3. chapter_scenes 表：章节场景分段
-4. triples 表：添加自动推断相关字段
+本脚本仅保留作历史参考；新建/清空库后勿再依赖此处对 triples 旧列的 ALTER。
 """
 
 import sqlite3

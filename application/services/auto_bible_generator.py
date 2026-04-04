@@ -739,7 +739,7 @@ JSON 格式：
                         object_type="character",
                         object_id=target_char_id,
                         confidence=0.9,
-                        source_type=SourceType.AUTO_INFERRED,
+                        source_type=SourceType.BIBLE_GENERATED,
                         description=description,
                         created_at=datetime.now(),
                         updated_at=datetime.now()
@@ -805,14 +805,14 @@ JSON 格式：
                         object_type="location",
                         object_id=target_loc_id,
                         confidence=0.9,
-                        source_type=SourceType.AUTO_INFERRED,
+                        source_type=SourceType.BIBLE_GENERATED,
                         description=description,
                         created_at=datetime.now(),
                         updated_at=datetime.now()
                     )
                     try:
                         await self.triple_repository.save(triple)
-                        logger.info(f"Created triple: {loc_data['name']} -{predicate}-> {target_loc_name}")
+                        logger.info(f"Created triple: {loc_data['name']} -{predicate}-> {target_name}")
                     except Exception as e:
                         logger.error(f"Failed to save triple: {e}")
 

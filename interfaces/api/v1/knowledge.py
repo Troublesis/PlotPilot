@@ -73,7 +73,12 @@ async def get_knowledge(
                 first_appearance=fact.first_appearance,
                 related_chapters=fact.related_chapters,
                 tags=fact.tags,
-                attributes=fact.attributes
+                attributes=fact.attributes,
+                confidence=fact.confidence,
+                source_type=fact.source_type,
+                subject_entity_id=fact.subject_entity_id,
+                object_entity_id=fact.object_entity_id,
+                provenance=list(getattr(fact, "provenance", []) or []),
             )
             for fact in knowledge.facts
         ]
@@ -146,7 +151,12 @@ async def update_knowledge(
                 first_appearance=fact.first_appearance,
                 related_chapters=fact.related_chapters,
                 tags=fact.tags,
-                attributes=fact.attributes
+                attributes=fact.attributes,
+                confidence=fact.confidence,
+                source_type=fact.source_type,
+                subject_entity_id=fact.subject_entity_id,
+                object_entity_id=fact.object_entity_id,
+                provenance=list(getattr(fact, "provenance", []) or []),
             )
             for fact in knowledge.facts
         ]
