@@ -13,11 +13,25 @@ if TYPE_CHECKING:
 
 @dataclass
 class CharacterDTO:
-    """人物 DTO"""
+    """人物 DTO
+
+    支持 POV 防火墙：
+    - public_profile: 公开信息，总是可见
+    - hidden_profile: 隐藏信息（如卧底身份），仅在 reveal_chapter 后可见
+    - reveal_chapter: 揭示章节号，None 表示总是可见
+    """
     id: str
     name: str
     description: str
     relationships: List[Any]
+    public_profile: str = ""
+    hidden_profile: str = ""
+    reveal_chapter: Optional[int] = None
+
+    def __post_init__(self):
+        """验证字段"""
+        if self.reveal_chapter is not None and self.reveal_chapter < 1:
+            raise ValueError(f"reveal_chapter must be >= 1, got {self.reveal_chapter}")
 
     @classmethod
     def from_domain(cls, character: 'Character') -> 'CharacterDTO':
@@ -33,7 +47,10 @@ class CharacterDTO:
             id=character.character_id.value,
             name=character.name,
             description=character.description,
-            relationships=character.relationships.copy()
+            relationships=character.relationships.copy(),
+            public_profile=getattr(character, 'public_profile', ''),
+            hidden_profile=getattr(character, 'hidden_profile', ''),
+            reveal_chapter=getattr(character, 'reveal_chapter', None)
         )
 
 

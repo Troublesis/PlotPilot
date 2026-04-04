@@ -354,7 +354,7 @@ class ContextBuilder:
         bible_dto = self.bible_service.get_bible_by_novel(novel_id)
 
         if bible_dto:
-            # 角色信息
+            # 角色信息（支持 POV 防火墙）
             if bible_dto.characters:
                 parts.append("Characters:")
                 running_tokens = self.estimate_tokens("\n".join(parts))
@@ -365,7 +365,27 @@ class ContextBuilder:
                         if char.name not in scene_director.characters:
                             continue
 
-                    char_info = f"- {char.name}: {char.description}"
+                    # POV 防火墙：根据 reveal_chapter 决定是否包含 hidden_profile
+                    profile_parts = []
+
+                    # 优先使用 public_profile，如果为空则使用 description（向后兼容）
+                    public_info = getattr(char, 'public_profile', '') or char.description
+                    if public_info:
+                        profile_parts.append(public_info)
+
+                    # 检查是否应该显示 hidden_profile
+                    hidden_info = getattr(char, 'hidden_profile', '')
+                    reveal_chapter = getattr(char, 'reveal_chapter', None)
+
+                    if hidden_info:
+                        # reveal_chapter=None 表示总是可见
+                        # 或者当前章节 >= reveal_chapter 时可见
+                        if reveal_chapter is None or chapter_number >= reveal_chapter:
+                            profile_parts.append(hidden_info)
+
+                    # 组装角色信息
+                    profile_text = " ".join(profile_parts) if profile_parts else ""
+                    char_info = f"- {char.name}: {profile_text}"
                     char_tokens = self.estimate_tokens(char_info)
 
                     # 检查预算：字符预算阈值为 60%
