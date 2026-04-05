@@ -125,6 +125,7 @@ class PlotPointResponse(BaseModel):
     chapter_number: int
     tension: int
     description: str
+    point_type: str = "rising"
 
 
 class PlotArcResponse(BaseModel):
@@ -461,6 +462,85 @@ def create_storyline(
         )
 
 
+class UpdateStorylineRequest(BaseModel):
+    """更新故事线请求"""
+    storyline_type: Optional[str] = None
+    estimated_chapter_start: Optional[int] = Field(None, gt=0)
+    estimated_chapter_end: Optional[int] = Field(None, gt=0)
+    status: Optional[str] = None
+
+
+@router.put(
+    "/{novel_id}/storylines/{storyline_id}",
+    response_model=StorylineResponse,
+    status_code=status.HTTP_200_OK
+)
+def update_storyline(
+    novel_id: str,
+    storyline_id: str,
+    request: UpdateStorylineRequest,
+    manager: StorylineManager = Depends(get_storyline_manager)
+):
+    """更新故事线"""
+    try:
+        storyline = manager.repository.get_by_id(storyline_id)
+        if storyline is None or str(storyline.novel_id) != novel_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storyline not found")
+
+        if request.storyline_type is not None:
+            storyline.storyline_type = StorylineType(request.storyline_type)
+        if request.estimated_chapter_start is not None:
+            storyline.estimated_chapter_start = request.estimated_chapter_start
+        if request.estimated_chapter_end is not None:
+            storyline.estimated_chapter_end = request.estimated_chapter_end
+        if request.status is not None:
+            from domain.novel.value_objects.storyline_status import StorylineStatus
+            storyline.status = StorylineStatus(request.status)
+
+        manager.repository.save(storyline)
+
+        return StorylineResponse(
+            id=storyline.id,
+            storyline_type=storyline.storyline_type.value,
+            status=storyline.status.value,
+            estimated_chapter_start=storyline.estimated_chapter_start,
+            estimated_chapter_end=storyline.estimated_chapter_end
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update storyline: {str(e)}"
+        )
+
+
+@router.delete(
+    "/{novel_id}/storylines/{storyline_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_storyline(
+    novel_id: str,
+    storyline_id: str,
+    manager: StorylineManager = Depends(get_storyline_manager)
+):
+    """删除故事线"""
+    try:
+        storyline = manager.repository.get_by_id(storyline_id)
+        if storyline is None or str(storyline.novel_id) != novel_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storyline not found")
+        manager.repository.delete(storyline_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete storyline: {str(e)}"
+        )
+
+
 @router.get(
     "/{novel_id}/plot-arc",
     response_model=PlotArcResponse,
@@ -487,7 +567,8 @@ def get_plot_arc(
                 PlotPointResponse(
                     chapter_number=point.chapter_number,
                     tension=point.tension.value,
-                    description=point.description
+                    description=point.description,
+                    point_type=point.point_type.value if hasattr(point.point_type, 'value') else str(point.point_type)
                 )
                 for point in plot_arc.key_points
             ]
@@ -540,7 +621,8 @@ def create_or_update_plot_arc(
                 PlotPointResponse(
                     chapter_number=point.chapter_number,
                     tension=point.tension.value,
-                    description=point.description
+                    description=point.description,
+                    point_type=point.point_type.value if hasattr(point.point_type, 'value') else str(point.point_type)
                 )
                 for point in plot_arc.key_points
             ]
