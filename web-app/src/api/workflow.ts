@@ -269,6 +269,14 @@ export const workflowApi = {
   createStoryline: (novelId: string, data: { storyline_type: string; estimated_chapter_start: number; estimated_chapter_end: number }) =>
     apiClient.post<StorylineDTO>(`/novels/${novelId}/storylines`, data) as unknown as Promise<StorylineDTO>,
 
+  /** PUT /api/v1/novels/{novel_id}/storylines/{storyline_id} */
+  updateStoryline: (novelId: string, storylineId: string, data: Partial<{ storyline_type: string; estimated_chapter_start: number; estimated_chapter_end: number; status: string }>) =>
+    apiClient.put<StorylineDTO>(`/novels/${novelId}/storylines/${storylineId}`, data) as unknown as Promise<StorylineDTO>,
+
+  /** DELETE /api/v1/novels/{novel_id}/storylines/{storyline_id} */
+  deleteStoryline: (novelId: string, storylineId: string) =>
+    apiClient.delete(`/novels/${novelId}/storylines/${storylineId}`) as unknown as Promise<void>,
+
   /** GET /api/v1/novels/{novel_id}/plot-arc */
   getPlotArc: (novelId: string) =>
     apiClient.get<PlotArcDTO>(`/novels/${novelId}/plot-arc`) as unknown as Promise<PlotArcDTO>,
