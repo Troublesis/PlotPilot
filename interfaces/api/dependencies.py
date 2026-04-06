@@ -229,9 +229,11 @@ def get_background_task_service():
 
 
 def get_chapter_aftermath_pipeline():
-    """章节保存后统一管线：叙事/向量、文风、KG 推断；三元组与伏笔在叙事同步中一次 LLM 落库。"""
+    """章节保存后统一管线：叙事/向量、文风、KG 推断；三元组与伏笔、故事线、张力、对话在叙事同步中一次 LLM 落库。"""
     from application.engine.services.chapter_aftermath_pipeline import ChapterAftermathPipeline
     from infrastructure.persistence.database.triple_repository import TripleRepository
+    from infrastructure.persistence.database.sqlite_storyline_repository import SqliteStorylineRepository
+    from infrastructure.persistence.database.connection import get_database
 
     return ChapterAftermathPipeline(
         knowledge_service=get_knowledge_service(),
@@ -240,6 +242,8 @@ def get_chapter_aftermath_pipeline():
         voice_drift_service=get_voice_drift_service(),
         triple_repository=TripleRepository(),
         foreshadowing_repository=get_foreshadowing_repository(),
+        storyline_repository=SqliteStorylineRepository(get_database()),
+        chapter_repository=get_chapter_repository(),
     )
 
 
