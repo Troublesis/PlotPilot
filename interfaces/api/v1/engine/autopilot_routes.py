@@ -10,8 +10,42 @@ from typing import Optional
 from domain.novel.entities.novel import AutopilotStatus, NovelStage
 from domain.novel.value_objects.novel_id import NovelId
 from interfaces.api.dependencies import get_novel_repository, get_chapter_repository
+from application.paths import get_db_path
+from infrastructure.persistence.database.story_node_repository import StoryNodeRepository
 
 logger = logging.getLogger(__name__)
+
+
+def _has_chapter_nodes_under_current_act(novel_id: str, current_act_zero_based: int) -> bool:
+    """当前幕（0-based）下是否已有章节结构节点。有则确认审阅后应直接 WRITING，避免再次跑幕级规划并重复弹确认。"""
+    repo = StoryNodeRepository(get_db_path())
+    target_act_number = (current_act_zero_based or 0) + 1
+    all_nodes = repo.get_by_novel_sync(novel_id)
+    act_nodes = sorted(
+        [
+            n
+            for n in all_nodes
+            if (n.node_type.value if hasattr(n.node_type, "value") else str(n.node_type)) == "act"
+        ],
+        key=lambda n: n.number,
+    )
+    target = next((n for n in act_nodes if n.number == target_act_number), None)
+    if not target:
+        return False
+    for ch in repo.get_children_sync(target.id):
+        t = ch.node_type.value if hasattr(ch.node_type, "value") else str(ch.node_type)
+        if t == "chapter":
+            return True
+    return False
+
+
+def _stage_after_review(novel) -> NovelStage:
+    """审阅确认后的下一阶段：幕下已有章节点 → 写作；否则 → 幕级规划（含宏观审阅后尚未规划章节的情况）。"""
+    nid = novel.novel_id.value if hasattr(novel.novel_id, "value") else str(novel.novel_id)
+    ca = getattr(novel, "current_act", 0) or 0
+    if _has_chapter_nodes_under_current_act(nid, ca):
+        return NovelStage.WRITING
+    return NovelStage.ACT_PLANNING
 router = APIRouter(prefix="/autopilot", tags=["autopilot"])
 
 # 与 AutopilotDaemon 中单本挂起阈值一致；守护进程内另有全局 CircuitBreaker（独立进程，API 不可见）
@@ -64,9 +98,9 @@ async def start_autopilot(novel_id: str, body: StartRequest = StartRequest()):
     if novel.current_stage in fresh_stages:
         novel.current_stage = NovelStage.MACRO_PLANNING
 
-    # 如果之前处于审阅等待，恢复为写作
+    # 如果之前处于审阅等待：幕下已有章节节点则直接写作，否则幕级规划（避免重复弹确认）
     if novel.current_stage == NovelStage.PAUSED_FOR_REVIEW:
-        novel.current_stage = NovelStage.ACT_PLANNING
+        novel.current_stage = _stage_after_review(novel)
 
     repo.save(novel)
     return {
@@ -100,9 +134,15 @@ async def resume_from_review(novel_id: str):
         raise HTTPException(400, f"当前不在审阅等待状态（当前：{novel.current_stage.value}）")
 
     novel.autopilot_status = AutopilotStatus.RUNNING
-    novel.current_stage = NovelStage.ACT_PLANNING
+    next_stage = _stage_after_review(novel)
+    novel.current_stage = next_stage
     repo.save(novel)
-    return {"success": True, "message": "已恢复：若章节规划已存在则进入写作，否则继续幕级规划"}
+    if next_stage == NovelStage.WRITING:
+        msg = "已恢复：当前幕已有章节规划，进入正文撰写"
+    else:
+        msg = "已恢复：继续幕级规划"
+    logger.info("autopilot resume novel=%s -> %s", novel_id, next_stage.value)
+    return {"success": True, "message": msg, "current_stage": novel.current_stage.value}
 
 
 @router.get("/{novel_id}/status")
