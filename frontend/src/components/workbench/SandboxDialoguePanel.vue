@@ -315,8 +315,70 @@ watch(deskTick, async () => {
 
 <style scoped>
 .sandbox-panel {
-  padding: 10px 12px;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+  background: linear-gradient(to bottom, var(--n-color-modal) 0%, rgba(139, 92, 246, 0.02) 100%);
+  padding: 18px 20px;
+  gap: 16px;
+}
+
+.sandbox-panel :deep(.n-card) {
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.sandbox-panel :deep(.n-card:hover) {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.sandbox-panel :deep(.n-card__header) {
+  padding: 16px 20px;
+  font-weight: 700;
+  font-size: 15px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(124, 58, 237, 0.08));
+  border-bottom: 1px solid var(--aitext-split-border);
+}
+
+.sandbox-panel :deep(.n-input),
+.sandbox-panel :deep(.n-select),
+.sandbox-panel :deep(.n-input-number) {
+  border-radius: 8px;
+}
+
+.sandbox-panel :deep(.n-button) {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.sandbox-panel :deep(.n-button:hover) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sandbox-panel :deep(.n-divider) {
+  margin: 12px 0;
+}
+
+.sandbox-panel :deep(.n-tag) {
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.sandbox-panel :deep(.n-space) {
+  gap: 12px !important;
+}
+
+.sandbox-panel :deep(.n-form-item-label) {
+  font-weight: 600;
+  color: var(--text-color-1);
+}
+
+.sandbox-panel :deep(.n-alert) {
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 </style>
