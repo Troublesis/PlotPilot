@@ -1,7 +1,15 @@
 <template>
-  <div class="fs-suggestions" :class="{ 'fs-suggestions--embedded': embedded }">
-    <n-alert type="info" :show-icon="true" style="margin-bottom: 12px; font-size: 12px">
-      <strong>写</strong>：即时计算，默认不落库（后续可接向量库 Embedding）。<strong>读</strong>：生成前勾选项可并入节拍提示（与「伏笔账本」同一数据源）。
+  <div class="fs-suggestions" :class="{ 'fs-suggestions--embedded': embedded, 'fs-suggestions--compact': compact }">
+    <n-alert
+      type="info"
+      :show-icon="true"
+      class="fs-lead"
+      :class="{ 'fs-lead--compact': compact }"
+    >
+      <span class="fs-lead-text">
+        <strong>写</strong>：即时计算，不落库。
+        <strong>读</strong>：与「伏笔账本」同源；勾选项便于你抄进节拍提示（生成前勾选若接入后端将一并注入）。
+      </span>
     </n-alert>
 
     <n-empty v-if="!currentChapterNumber" description="请先在左侧选择章节">
@@ -15,9 +23,12 @@
         <n-input
           v-model:value="outlineDraft"
           type="textarea"
-          placeholder="粘贴或编写本章大纲，用于与待回收伏笔做相似度（当前为词重叠启发式）"
-          :autosize="{ minRows: 4, maxRows: 12 }"
+          placeholder="可留空：将仅用上方「本章规划」里的结构树大纲参与匹配；若补充要点，匹配更准。"
+          :autosize="{ minRows: compact ? 3 : 4, maxRows: 12 }"
         />
+        <n-text depth="3" class="fs-hint">
+          算法：词重叠启发式；未接向量库时不必写太长。
+        </n-text>
       </n-form-item>
       <n-button type="primary" size="small" :loading="loading" @click="runSuggest">
         分析建议回收项
@@ -56,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
 import { foreshadowApi } from '../../api/foreshadow'
 import type { ChapterForeshadowSuggestionItem } from '../../api/foreshadow'
@@ -67,8 +78,12 @@ const props = withDefaults(
     currentChapterNumber?: number | null
     /** 嵌入中栏卡片时收紧外边距 */
     embedded?: boolean
+    /** 再收紧：减少说明区与留白 */
+    compact?: boolean
+    /** 与「本章规划」结构树大纲同步，用于空时预填匹配文本 */
+    prefillOutline?: string
   }>(),
-  { currentChapterNumber: null, embedded: false }
+  { currentChapterNumber: null, embedded: false, compact: false, prefillOutline: '' }
 )
 
 const message = useMessage()
@@ -112,11 +127,30 @@ async function runSuggest() {
 
 watch(
   () => props.currentChapterNumber,
-  () => {
+  (ch, prev) => {
     ran.value = false
     items.value = []
     note.value = ''
     picked.value = new Set()
+    if (ch != null && ch !== prev) {
+      outlineDraft.value = (props.prefillOutline || '').trim()
+    }
+  }
+)
+
+onMounted(() => {
+  if (props.currentChapterNumber && !outlineDraft.value.trim()) {
+    outlineDraft.value = (props.prefillOutline || '').trim()
+  }
+})
+
+watch(
+  () => props.prefillOutline,
+  (text) => {
+    if (!props.currentChapterNumber) return
+    if (!outlineDraft.value.trim() && (text || '').trim()) {
+      outlineDraft.value = (text || '').trim()
+    }
   }
 )
 </script>
@@ -133,6 +167,31 @@ watch(
   padding: 0;
   height: auto;
   max-height: none;
+}
+
+.fs-suggestions--compact .fs-lead {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+}
+
+.fs-lead {
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.fs-lead--compact {
+  font-size: 11px;
+}
+
+.fs-lead-text {
+  line-height: 1.5;
+}
+
+.fs-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .clue-text {
