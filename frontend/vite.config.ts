@@ -13,9 +13,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      // 代理到新架构的后端服务器（8008 端口）
+      // 代理到后端服务器（默认 8005 端口）
       '/api': {
-        target: 'http://localhost:8009',
+        target: 'http://localhost:8005',
         changeOrigin: true,
         ws: true,
         // SSE 长连接，避免代理过早断开

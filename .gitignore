@@ -68,4 +68,10 @@ Desktop.ini
 # Local vector DB / dev dumps (if checked in by mistake)
 qdrant_storage/
 .models/
-data/
+
+# Evaluation results
+scripts/evaluation/results/
+
+# Data directory (keep structure, ignore content)
+data/chromadb/
+data/logs/

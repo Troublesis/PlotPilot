@@ -317,7 +317,7 @@ class AutopilotDaemon:
         return rows
 
     async def _handle_act_planning(self, novel: Novel):
-        """处理幕级规划（插入缓冲章策略）"""
+        """处理幕级规划（插入缓冲章策略 + 动态幕生成）"""
         if not self._is_still_running(novel):
             return
 
@@ -332,21 +332,61 @@ class AutopilotDaemon:
 
         target_act = next((n for n in act_nodes if n.number == target_act_number), None)
 
+        # 动态幕生成：超长篇可能只规划了部/卷框架，幕节点需要动态创建
         if not target_act:
-            if act_nodes:
-                await self.planning_service.create_next_act_auto(
-                    novel_id=novel_id,
-                    current_act_id=act_nodes[-1].id
-                )
-                all_nodes = await self.story_node_repo.get_by_novel(novel_id)
-                act_nodes = sorted(
-                    [n for n in all_nodes if n.node_type.value == "act"],
-                    key=lambda n: n.number
-                )
-                target_act = next((n for n in act_nodes if n.number == target_act_number), None)
+            # 先尝试找到父卷节点
+            volume_nodes = sorted(
+                [n for n in all_nodes if n.node_type.value == "volume"],
+                key=lambda n: n.number
+            )
+            
+            # 计算应该在第几卷
+            chapters_per_volume = max((novel.target_chapters or 100) // max(len(volume_nodes), 1), 50)
+            estimated_volume_number = max(1, (novel.current_auto_chapters or 0) // chapters_per_volume + 1)
+            
+            parent_volume = next((v for v in volume_nodes if v.number == estimated_volume_number), None)
+            
+            if parent_volume:
+                logger.info(f"[{novel.novel_id}] 🎯 动态生成第 {target_act_number} 幕（父卷：第 {parent_volume.number} 卷）")
+                try:
+                    # 使用最后一个幕作为参考（如果有）
+                    last_act = act_nodes[-1] if act_nodes else None
+                    if last_act:
+                        await self.planning_service.create_next_act_auto(
+                            novel_id=novel_id,
+                            current_act_id=last_act.id
+                        )
+                    else:
+                        # 完全没有幕节点，创建第一个幕
+                        logger.info(f"[{novel.novel_id}] 创建首幕")
+                        from domain.structure.story_node import StoryNode, NodeType, PlanningStatus, PlanningSource
+                        first_act = StoryNode(
+                            id=f"act-{novel_id}-1",
+                            novel_id=novel_id,
+                            parent_id=parent_volume.id,
+                            node_type=NodeType.ACT,
+                            number=1,
+                            title="第一幕 · 开端",
+                            description="故事起始，建立世界观与主角目标",
+                            order_index=0,
+                            planning_status=PlanningStatus.CONFIRMED,
+                            planning_source=PlanningSource.AI_MACRO,
+                            suggested_chapter_count=chapters_per_volume // 3,
+                        )
+                        await self.story_node_repo.save(first_act)
+                    
+                    # 重新加载
+                    all_nodes = await self.story_node_repo.get_by_novel(novel_id)
+                    act_nodes = sorted(
+                        [n for n in all_nodes if n.node_type.value == "act"],
+                        key=lambda n: n.number
+                    )
+                    target_act = next((n for n in act_nodes if n.number == target_act_number), None)
+                except Exception as e:
+                    logger.warning(f"[{novel.novel_id}] 动态幕生成失败: {e}")
 
             if not target_act:
-                logger.error(f"[{novel.novel_id}] 找不到第 {target_act_number} 幕")
+                logger.error(f"[{novel.novel_id}] 找不到第 {target_act_number} 幕，且动态生成失败")
                 novel.current_stage = NovelStage.WRITING
                 return
 
