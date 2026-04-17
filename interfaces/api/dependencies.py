@@ -3,7 +3,6 @@
 提供 FastAPI 依赖注入函数，用于创建服务和仓储实例。
 """
 import logging
-import os
 from pathlib import Path
 from functools import lru_cache
 from typing import TYPE_CHECKING, Optional
@@ -30,7 +29,6 @@ from infrastructure.persistence.database.story_node_repository import StoryNodeR
 from infrastructure.persistence.database.sqlite_cast_repository import SqliteCastRepository
 from infrastructure.persistence.database.sqlite_foreshadowing_repository import SqliteForeshadowingRepository
 from infrastructure.persistence.database.sqlite_timeline_repository import SqliteTimelineRepository
-from infrastructure.ai.config.settings import Settings
 from infrastructure.ai.provider_factory import DynamicLLMService, LLMProviderFactory
 from application.ai.llm_control_service import LLMControlService
 
@@ -63,64 +61,6 @@ logger = logging.getLogger(__name__)
 # 全局存储实例
 _storage = None
 
-
-def _anthropic_api_key() -> Optional[str]:
-    """优先 ANTHROPIC_API_KEY，否则 ANTHROPIC_AUTH_TOKEN（与部分代理/IDE 配置命名一致）。"""
-    raw = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")
-    if raw is None:
-        return None
-    key = raw.strip()
-    return key or None
-
-
-def _anthropic_base_url() -> Optional[str]:
-    u = os.getenv("ANTHROPIC_BASE_URL")
-    return u.strip() if u and u.strip() else None
-
-
-def _anthropic_settings(require_key: bool = True) -> Optional[Settings]:
-    """构建 Anthropic Settings；require_key=False 时无密钥返回 None。"""
-    key = _anthropic_api_key()
-    if not key:
-        if require_key:
-            raise ValueError(
-                "Set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN (optional: ANTHROPIC_BASE_URL)"
-            )
-        return None
-    return Settings(
-        api_key=key,
-        base_url=_anthropic_base_url(),
-        default_model=os.getenv("WRITING_MODEL", ""),
-    )
-
-
-def _openai_api_key() -> Optional[str]:
-    raw = os.getenv("OPENAI_API_KEY")
-    if raw is None:
-        return None
-    key = raw.strip()
-    return key or None
-
-
-def _openai_base_url() -> Optional[str]:
-    u = os.getenv("OPENAI_BASE_URL")
-    return u.strip() if u and u.strip() else None
-
-
-def _openai_settings(require_key: bool = True) -> Optional[Settings]:
-    """构建 OpenAI Settings；require_key=False 时无密钥返回 None。"""
-    key = _openai_api_key()
-    if not key:
-        if require_key:
-            raise ValueError(
-                "Set OPENAI_API_KEY (optional: OPENAI_BASE_URL)"
-            )
-        return None
-    return Settings(
-        api_key=key,
-        base_url=_openai_base_url(),
-        default_model=os.getenv("WRITING_MODEL") or os.getenv("ARK_MODEL", ""),
-    )
 
 
 @lru_cache
@@ -426,24 +366,15 @@ def get_consistency_checker() -> ConsistencyChecker:
 def get_embedding_service():
     """获取 Embedding 服务（优先从数据库读取配置，环境变量作为 fallback）。
 
-    配置优先级：
-    1. 数据库 embedding_config 表中的 mode / api_key / base_url / model / model_path / use_gpu
-    2. 环境变量 EMBEDDING_SERVICE / EMBEDDING_MODEL_PATH 等
-    3. 默认值：本地 BAAI/bge-small-zh-v1.5
+    配置来源：数据库 embedding_config 表（由 EmbeddingConfigService 在首次启动时从环境变量种子写入）。
+    数据库不可用或未配置时返回 None，向量检索功能禁用。
 
     如果 VECTOR_STORE_ENABLED=false，返回 None。
     """
     if os.getenv("VECTOR_STORE_ENABLED", "true").lower() != "true":
         return None
 
-    # 尝试从数据库读取配置
-    _mode = "local"
-    _api_key = ""
-    _base_url = ""
-    _model = "text-embedding-3-small"
-    _model_path = "BAAI/bge-small-zh-v1.5"
-    _use_gpu = True
-
+    # 从数据库读取配置（EmbeddingConfigService 负责首次启动时从 env 种子写入）
     try:
         from application.ai.embedding_config_service import get_embedding_config_service
         cfg_svc = get_embedding_config_service()
@@ -459,31 +390,24 @@ def get_embedding_service():
             _mode, _model, _model_path,
         )
     except Exception as exc:
-        # 数据库不可用时回退到环境变量
-        _mode = os.getenv("EMBEDDING_SERVICE", "local").lower()
-        _api_key = os.getenv("EMBEDDING_API_KEY") or ""
-        _base_url = os.getenv("EMBEDDING_BASE_URL") or ""
-        _model_path = os.getenv("EMBEDDING_MODEL_PATH", "BAAI/bge-small-zh-v1.5")
-        _use_gpu = os.getenv("EMBEDDING_USE_GPU", "true").lower() == "true"
-        logger.warning("读取嵌入配置失败，回退到环境变量: %s", exc)
+        logger.warning("读取嵌入配置失败，向量检索已禁用: %s", exc)
+        return None
 
     try:
         if _mode == "openai":
-            key = _api_key or os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
-            if not key:
-                logger.warning("embedding mode=openai 但未配置 API Key，向量检索已禁用")
+            if not _api_key:
+                logger.warning("embedding mode=openai 但数据库中未配置 API Key，向量检索已禁用")
                 return None
             from infrastructure.ai.openai_embedding_service import OpenAIEmbeddingService
-            logger.info("使用 OpenAI 嵌入服务 (DB配置): base_url=%s, model=%s", _base_url, _model)
+            logger.info("使用 OpenAI 嵌入服务: base_url=%s, model=%s", _base_url, _model)
             return OpenAIEmbeddingService(
-                api_key=key,
+                api_key=_api_key,
                 base_url=_base_url or None,
                 model=_model,
             )
         else:
-            # 默认 local 模式
             from infrastructure.ai.local_embedding_service import LocalEmbeddingService
-            logger.info("使用本地嵌入服务 (DB配置): path=%s, gpu=%s", _model_path, _use_gpu)
+            logger.info("使用本地嵌入服务: path=%s, gpu=%s", _model_path, _use_gpu)
             return LocalEmbeddingService(model_name=_model_path, use_gpu=_use_gpu)
     except Exception as e:
         logger.warning("EmbeddingService 初始化失败: %s", e)
