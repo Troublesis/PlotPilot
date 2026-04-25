@@ -101,7 +101,7 @@ export const novelApi = {
    * List all novels
    * GET /api/v1/novels
    */
-  listNovels: () => apiClient.get<NovelDTO[]>('/novels') as Promise<NovelDTO[]>,
+  listNovels: () => apiClient.get<NovelDTO[]>('/novels/') as Promise<NovelDTO[]>,
 
   /**
    * Get novel by ID
@@ -124,7 +124,7 @@ export const novelApi = {
     /** V1 体量档：与 target_chapters 二选一由后端解析 */
     length_tier?: 'short' | 'standard' | 'epic' | null
     target_words_per_chapter?: number | null
-  }) => apiClient.post<NovelDTO>('/novels', data) as Promise<NovelDTO>,
+  }) => apiClient.post<NovelDTO>('/novels/', data) as Promise<NovelDTO>,
 
   /**
    * Delete a novel
