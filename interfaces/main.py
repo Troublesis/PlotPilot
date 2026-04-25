@@ -306,7 +306,11 @@ def _run_daemon_in_process(
     # 重新配置日志（子进程需要独立配置）
     from interfaces.api.middleware.logging_config import setup_logging
     setup_logging(level=log_level, log_file=log_file)
-    
+
+    # 重置数据库单例，避免继承父进程的 SQLite 连接（fork 后连接不可靠）
+    import infrastructure.persistence.database.connection as _db_mod
+    _db_mod._db_instance = None
+
     # 注入流式队列（必须在导入任何使用 streaming_bus 的模块前设置）
     if stream_queue is not None:
         from application.engine.services.streaming_bus import inject_stream_queue

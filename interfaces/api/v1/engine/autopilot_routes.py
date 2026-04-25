@@ -123,14 +123,22 @@ async def start_autopilot(novel_id: str, body: StartRequest = StartRequest()):
     novel.current_auto_chapters = novel.current_auto_chapters or 0
     novel.consecutive_error_count = 0
 
-    # 如果是全新小说，从宏观规划开始
+    # 根据当前阶段决定起点
     fresh_stages = {NovelStage.PLANNING, NovelStage.MACRO_PLANNING}
     if novel.current_stage in fresh_stages:
         novel.current_stage = NovelStage.MACRO_PLANNING
-
-    # 如果之前处于审阅等待：幕下已有章节节点则直接写作，否则幕级规划（避免重复弹确认）
-    if novel.current_stage == NovelStage.PAUSED_FOR_REVIEW:
+    elif novel.current_stage == NovelStage.PAUSED_FOR_REVIEW:
         novel.current_stage = _stage_after_review(novel)
+    elif novel.current_stage == NovelStage.COMPLETED:
+        # 已完结的小说重新启动：若未达目标章数则继续幕级规划，否则重新宏观规划
+        novel.current_stage = NovelStage.ACT_PLANNING
+        logger.info("autopilot start: COMPLETED novel restarted -> ACT_PLANNING")
+    elif novel.current_stage not in {
+        NovelStage.ACT_PLANNING, NovelStage.WRITING, NovelStage.AUDITING,
+    }:
+        # 其他未识别阶段兜底：进入幕级规划
+        novel.current_stage = NovelStage.ACT_PLANNING
+        logger.info("autopilot start: unrecognised stage -> ACT_PLANNING")
 
     repo.save(novel)
     return {

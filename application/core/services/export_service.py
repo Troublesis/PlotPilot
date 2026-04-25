@@ -100,6 +100,8 @@ class ExportService:
                 result = self._export_to_docx(novel, chapters)
             elif format == "markdown":
                 result = self._export_to_markdown(novel, chapters)
+            elif format == "txt":
+                result = self._export_to_txt(novel, chapters)
             else:
                 raise ValueError(f"不支持的导出格式: {format}")
             logger.info("导出成功，%s 字节", len(result[0]))
@@ -128,10 +130,12 @@ class ExportService:
                 result = self._export_to_docx(novel, [chapter])
             elif format == "markdown":
                 result = self._export_to_markdown(novel, [chapter])
+            elif format == "txt":
+                result = self._export_to_txt(novel, [chapter])
             else:
                 raise ValueError(f"不支持的导出格式: {format}")
             data, mime, _ = result
-            ext = {"epub": "epub", "pdf": "pdf", "docx": "docx", "markdown": "md"}[format]
+            ext = {"epub": "epub", "pdf": "pdf", "docx": "docx", "markdown": "md", "txt": "txt"}[format]
             chapter_stem = _safe_filename_stem(
                 f"{novel.title or 'novel'}-第{chapter.number}章"
             )
@@ -153,22 +157,14 @@ class ExportService:
         book.set_language("zh")
         book.add_author(novel.author or "未知作者")
 
-        intro = epub.EpubHtml(
-            title="简介",
-            file_name="intro.xhtml",
-            lang="zh",
-        )
         premise = html.escape((novel.premise or "").strip() or "（无简介）")
-        intro.content = f"""<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="zh">
-<head><title>简介</title><meta charset="utf-8"/></head>
-<body>
-<h1>{html.escape(novel.title or "未命名")}</h1>
-<p>作者：{html.escape(novel.author or "—")}</p>
-<p>{premise}</p>
-</body>
-</html>"""
+        intro = epub.EpubHtml(title="简介", file_name="intro.xhtml", lang="zh")
+        # ebooklib EpubHtml.content expects inner HTML only (no <html>/<head> wrapper)
+        intro.content = (
+            f"<h1>{html.escape(novel.title or '未命名')}</h1>"
+            f"<p>作者：{html.escape(novel.author or '—')}</p>"
+            f"<p>{premise}</p>"
+        )
         book.add_item(intro)
 
         spine_items: List[epub.EpubHtml] = [intro]
@@ -178,15 +174,7 @@ class ExportService:
             title_esc = html.escape(title_txt)
             body = _content_to_html_paragraphs(ch.content or "")
             item = epub.EpubHtml(title=title_txt, file_name=fname, lang="zh")
-            item.content = f"""<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="zh">
-<head><title>{title_esc}</title><meta charset="utf-8"/></head>
-<body>
-<h1>{title_esc}</h1>
-{body}
-</body>
-</html>"""
+            item.content = f"<h1>{title_esc}</h1>\n{body}"
             book.add_item(item)
             spine_items.append(item)
 
@@ -316,3 +304,26 @@ class ExportService:
         text = "\n".join(lines)
         stem = _safe_filename_stem(novel.title)
         return text.encode("utf-8"), "text/markdown; charset=utf-8", f"{stem}.md"
+
+    def _export_to_txt(self, novel: Novel, chapters: list[Chapter]) -> Tuple[bytes, str, str]:
+        parts: List[str] = [
+            novel.title or "未命名",
+            f"作者：{novel.author or '—'}",
+        ]
+        premise = (novel.premise or "").strip()
+        if premise:
+            parts.append(f"简介：{premise}")
+        parts.append("")
+
+        for ch in chapters:
+            title = _chapter_display_title(ch)
+            parts.append(title)
+            parts.append("")
+            content = (ch.content or "").strip()
+            parts.append(content or "（无正文）")
+            parts.append("")
+            parts.append("")
+
+        text = "\n".join(parts)
+        stem = _safe_filename_stem(novel.title)
+        return text.encode("utf-8"), "text/plain; charset=utf-8", f"{stem}.txt"

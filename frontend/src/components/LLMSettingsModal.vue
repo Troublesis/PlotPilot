@@ -95,10 +95,13 @@ function handleThemeChange(newMode: ThemeMode) {
     themeStore.setTheme(newMode)
   }
 
-  if ('startViewTransition' in document) {
+  const doc = document as Document & {
+    startViewTransition?: (cb: () => void) => void
+  }
+
+  if (typeof doc.startViewTransition === 'function') {
     // Chrome/Edge 111+：页面截图 + 交叉淡入淡出，平滑无闪烁
-    ;(document as Document & { startViewTransition: (cb: () => void) => void })
-      .startViewTransition(applyTheme)
+    doc.startViewTransition(applyTheme)
   } else {
     // 降级：CSS transition 方案（Firefox / Safari）
     const root = (document as any).documentElement as HTMLElement

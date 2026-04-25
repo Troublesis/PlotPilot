@@ -29,14 +29,14 @@ async def export_novel(
     
     Args:
         novel_id: 小说ID
-        format: 导出格式，支持 epub, pdf, docx, markdown
-        
+        format: 导出格式，支持 epub, pdf, docx, markdown, txt
+
     Returns:
         流式响应，包含导出的文件
     """
     try:
         # 验证格式
-        valid_formats = ["epub", "pdf", "docx", "markdown"]
+        valid_formats = ["epub", "pdf", "docx", "markdown", "txt"]
         if format not in valid_formats:
             raise HTTPException(status_code=400, detail=f"不支持的导出格式: {format}")
         
@@ -72,7 +72,7 @@ async def export_chapter(
 
     Args:
         chapter_id: 章节ID（UUID格式，如 chapter-novel1-1）
-        format: 导出格式，支持 epub, pdf, docx, markdown
+        format: 导出格式，支持 epub, pdf, docx, markdown, txt
         novel_id: 小说ID（与 chapter_number 配合使用，替代 chapter_id）
         chapter_number: 章节编号（与 novel_id 配合使用，替代 chapter_id）
 
@@ -81,7 +81,7 @@ async def export_chapter(
     """
     try:
         # 验证格式
-        valid_formats = ["epub", "pdf", "docx", "markdown"]
+        valid_formats = ["epub", "pdf", "docx", "markdown", "txt"]
         if format not in valid_formats:
             raise HTTPException(status_code=400, detail=f"不支持的导出格式: {format}")
 

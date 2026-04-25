@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: plotpilot-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: Australia/Sydney
+      VECTOR_STORE_TYPE: qdrant
+      QDRANT_HOST: host.docker.internal
+      QDRANT_PORT: "6333"
+      QDRANT_URL: http://host.docker.internal:6333
+      CORS_ORIGINS: http://localhost:10215,http://127.0.0.1:10215,http://192.168.0.56:10215
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "10214:10214"
+    volumes:
+      - /Users/troublesis/code/PlotPilot/data:/app/data
+      - /Users/troublesis/code/PlotPilot/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10214/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: plotpilot-frontend
+    restart: unless-stopped
+    environment:
+      TZ: Australia/Sydney
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "10215:10215"

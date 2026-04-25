@@ -121,7 +121,8 @@ const exportOptions = [
   { label: '📱 EPUB (电子书)', key: 'epub' },
   { label: '📄 PDF (打印)', key: 'pdf' },
   { label: '📝 DOCX (Word)', key: 'docx' },
-  { label: '📋 Markdown', key: 'markdown' }
+  { label: '📋 Markdown', key: 'markdown' },
+  { label: '📄 TXT (纯文本)', key: 'txt' }
 ]
 
 async function handleExport(format: string) {
@@ -133,7 +134,8 @@ async function handleExport(format: string) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `novel-${props.slug}.${format}`
+    const ext = format === 'markdown' ? 'md' : format
+    a.download = `novel-${props.slug}.${ext}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

@@ -218,6 +218,12 @@ class AutopilotDaemon:
             elif novel.current_stage == NovelStage.AUDITING:
                 logger.info(f"[{novel.novel_id}] 🔍 开始审计")
                 await self._handle_auditing(novel)
+            elif novel.current_stage == NovelStage.COMPLETED:
+                # 已完结但 autopilot_status=RUNNING（用户重新启动）：继续幕级规划
+                logger.info(f"[{novel.novel_id}] 🔄 已完结小说重新启动，进入幕级规划续写")
+                novel.current_stage = NovelStage.ACT_PLANNING
+                self._flush_novel(novel)
+                return
             elif novel.current_stage == NovelStage.PAUSED_FOR_REVIEW:
                 # 全自动模式：跳过审阅，直接进入下一阶段
                 if getattr(novel, 'auto_approve_mode', False):
@@ -345,6 +351,12 @@ class AutopilotDaemon:
 
         target_act = next((n for n in act_nodes if n.number == target_act_number), None)
 
+        # 结构计算引擎推荐值（多处复用）
+        from application.blueprint.services.continuous_planning_service import calculate_structure_params
+        _struct_target = novel.target_chapters or 100
+        _struct_params = calculate_structure_params(_struct_target)
+        rec_chapters_per_act = _struct_params["chapters_per_act"]
+
         # 动态幕生成：超长篇可能只规划了部/卷框架，幕节点需要动态生成
         if not target_act:
             # 先尝试找到父卷节点
@@ -352,6 +364,8 @@ class AutopilotDaemon:
                 [n for n in all_nodes if n.node_type.value == "volume"],
                 key=lambda n: n.number
             )
+
+            rec_acts_per_volume = _struct_params["acts_per_volume"]
 
             # 智能父卷选择：优先让当前卷填满（达到 rec_acts_per_volume 幕），再跳下一卷
             parent_volume = self._find_parent_volume_for_new_act(
