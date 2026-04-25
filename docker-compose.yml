@@ -1,8 +1,6 @@
 services:
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: plotpilot-backend:latest
     container_name: plotpilot-backend
     restart: unless-stopped
     env_file:
@@ -21,6 +19,12 @@ services:
     volumes:
       - /Users/troublesis/code/PlotPilot/data:/app/data
       - /Users/troublesis/code/PlotPilot/logs:/app/logs
+      # Mount source code for live updates — restart container to apply changes
+      - /Users/troublesis/code/PlotPilot/application:/app/application
+      - /Users/troublesis/code/PlotPilot/domain:/app/domain
+      - /Users/troublesis/code/PlotPilot/infrastructure:/app/infrastructure
+      - /Users/troublesis/code/PlotPilot/interfaces:/app/interfaces
+      - /Users/troublesis/code/PlotPilot/scripts:/app/scripts
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10214/health', timeout=5)"]
       interval: 30s
@@ -29,9 +33,7 @@ services:
       start_period: 40s
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.frontend
+    image: plotpilot-frontend:latest
     container_name: plotpilot-frontend
     restart: unless-stopped
     environment:
@@ -41,3 +43,6 @@ services:
         condition: service_healthy
     ports:
       - "10215:10215"
+    volumes:
+      # Mount built frontend — run `npm run build` locally then restart container
+      - /Users/troublesis/code/PlotPilot/frontend/dist:/usr/share/nginx/html
